@@ -2,10 +2,7 @@ import pandas as pd
 try:
     from prophet import Prophet
 except ImportError:
-    print("Prophet not installed. Installing now...")
-    import os
-    os.system("pip install prophet")
-    from prophet import Prophet
+    Prophet = None
 import os
 
 class FoodPriceProphet:
@@ -20,6 +17,9 @@ class FoodPriceProphet:
         return prophet_df
     
     def train_and_forecast(self, province, commodity, periods=30):
+        if Prophet is None:
+            raise RuntimeError("Prophet library is not installed correctly. Forecast cannot be performed.")
+            
         print(f"Training Prophet for {commodity} in {province}...")
         p_df = self.prepare_data(province, commodity)
         

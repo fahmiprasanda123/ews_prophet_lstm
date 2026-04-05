@@ -1,5 +1,12 @@
-import torch
-import torch.nn as nn
+try:
+    import torch
+    import torch.nn as nn
+except ImportError:
+    torch = None
+    class DummyModule:
+        def __init__(self, *args, **kwargs): pass
+        def __call__(self, *args, **kwargs): return None
+    nn = type('dummy', (), {'Module': DummyModule, 'LSTM': DummyModule, 'Linear': DummyModule, 'MSELoss': DummyModule})
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
@@ -24,6 +31,9 @@ class LSTMForecaster:
         self.scaler = MinMaxScaler(feature_range=(-1, 1))
         
     def prepare_data(self, df, province, commodity):
+        if torch is None:
+            raise RuntimeError("PyTorch (torch) is not installed correctly. Forecast cannot be prepared.")
+            
         subset = df[(df['province'] == province) & (df['commodity'] == commodity)]['price'].values
         subset = subset.reshape(-1, 1)
         scaled_data = self.scaler.fit_transform(subset)
@@ -50,6 +60,9 @@ class LSTMForecaster:
                 print(f'Epoch {epoch+1} loss: {single_loss.item():10.8f}')
 
     def predict(self, last_sequence):
+        if torch is None or self.model is None:
+            raise RuntimeError("Model or PyTorch is not available.")
+            
         self.model.eval()
         with torch.no_grad():
             scaled_seq = self.scaler.transform(last_sequence.reshape(-1, 1))

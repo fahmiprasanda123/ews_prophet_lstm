@@ -132,35 +132,39 @@ except Exception as e:
 # --- Model Integration (Cached Forecasts) ---
 @st.cache_resource
 def get_ai_forecast(province, commodity, _df, target_date):
-    # Prophet Forecast (Trend & Seasonality)
-    p_forecaster = FoodPriceProphet(_df)
-    # Forecast up to 120 days (4 months) to allow deeper date selection
-    p_forecast = p_forecaster.train_and_forecast(province, commodity, periods=120)
-    
-    # LSTM Forecast (Short-term dynamics)
-    l_forecaster = LSTMForecaster(seq_length=30)
-    X, y = l_forecaster.prepare_data(_df, province, commodity)
-    l_forecaster.train_single_series(X[-300:], y[-300:], epochs=5)
-    
-    # Select prediction for the specific target date
-    target_dt = pd.to_datetime(target_date)
-    p_row = p_forecast[p_forecast['ds'].dt.date == target_dt.date()]
-    
-    if p_row.empty:
-        p_pred = p_forecast['yhat'].iloc[-1]
-    else:
-        p_pred = p_row['yhat'].iloc[0]
+    try:
+        # Prophet Forecast (Trend & Seasonality)
+        p_forecaster = FoodPriceProphet(_df)
+        # Forecast up to 120 days (4 months) to allow deeper date selection
+        p_forecast = p_forecaster.train_and_forecast(province, commodity, periods=120)
         
-    # LSTM for long range is just the last known trend + Prophet's diff
-    last_30 = _df[(_df['province'] == province) & (_df['commodity'] == commodity)]['price'].values[-30:]
-    l_pred_next = l_forecaster.predict(last_30)[0][0]
-    
-    # Hybrid: Weighting adjusts by distance. Further out = more Prophet.
-    days_ahead = (target_dt.date() - _df['date'].iloc[-1].date()).days
-    weight_l = max(0.05, 0.4 - (days_ahead * 0.003)) 
-    hybrid_pred = (p_pred * (1 - weight_l)) + (l_pred_next * weight_l)
-    
-    return float(hybrid_pred), p_forecast
+        # LSTM Forecast (Short-term dynamics)
+        l_forecaster = LSTMForecaster(seq_length=30)
+        X, y = l_forecaster.prepare_data(_df, province, commodity)
+        l_forecaster.train_single_series(X[-300:], y[-300:], epochs=5)
+        
+        # Select prediction for the specific target date
+        target_dt = pd.to_datetime(target_date)
+        p_row = p_forecast[p_forecast['ds'].dt.date == target_dt.date()]
+        
+        if p_row.empty:
+            p_pred = p_forecast['yhat'].iloc[-1]
+        else:
+            p_pred = p_row['yhat'].iloc[0]
+            
+        # LSTM for long range is just the last known trend + Prophet's diff
+        last_30 = _df[(_df['province'] == province) & (_df['commodity'] == commodity)]['price'].values[-30:]
+        l_pred_next = l_forecaster.predict(last_30)[0][0]
+        
+        # Hybrid: Weighting adjusts by distance. Further out = more Prophet.
+        days_ahead = (target_dt.date() - _df['date'].iloc[-1].date()).days
+        weight_l = max(0.05, 0.4 - (days_ahead * 0.003)) 
+        hybrid_pred = (p_pred * (1 - weight_l)) + (l_pred_next * weight_l)
+        
+        return float(hybrid_pred), p_forecast
+    except Exception as e:
+        st.error(f"⚠️ AI Engine Error: {e}")
+        return None, None
 
 # --- Sidebar Filters ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2534/2534044.png", width=60)
@@ -194,8 +198,12 @@ ews = EWSEngine(df)
 current_data = df[(df['province'] == selected_province) & (df['commodity'] == selected_commodity)]
 current_price = current_data['price'].iloc[-1]
 
-level, message = ews.calculate_warning_level(current_price, predicted_price)
-status_color = ews.get_status_color(level)
+if predicted_price is not None:
+    level, message = ews.calculate_warning_level(current_price, predicted_price)
+    status_color = ews.get_status_color(level)
+else:
+    level, message = "Unavailable", "AI Model is currently offline or loading."
+    status_color = "#666666"
 
 with col2:
     st.markdown(f"""
@@ -208,9 +216,13 @@ with col2:
 
 # --- Main Metrics ---
 m1, m2, m3, m4 = st.columns(4)
-price_diff = (predicted_price - current_price) / current_price * 100
 m1.metric("Latest Market Price", f"IDR {current_price:,.0f}/kg", "+1.2%")
-m2.metric(f"Forecast ({forecast_date.strftime('%d %b')})", f"IDR {predicted_price:,.0f}/kg", f"{price_diff:+.1f}%", delta_color="inverse")
+
+if predicted_price is not None:
+    price_diff = (predicted_price - current_price) / current_price * 100
+    m2.metric(f"Forecast ({forecast_date.strftime('%d %b')})", f"IDR {predicted_price:,.0f}/kg", f"{price_diff:+.1f}%", delta_color="inverse")
+else:
+    m2.metric(f"Forecast ({forecast_date.strftime('%d %b')})", "N/A", "0.0%")
 
 # Volatility calculate
 volatility = current_data['price'].pct_change().std() * 100
@@ -222,45 +234,48 @@ st.markdown("### 📊 Market Intelligence")
 tab1, tab2, tab3 = st.tabs(["📉 Price Forecast", "📍 Regional Heatmap", "🔍 Correlation Analysis"])
 
 with tab1:
-    fig = go.Figure()
-    # Historical Data
-    fig.add_trace(go.Scatter(
-        x=current_data['date'].tail(90), 
-        y=current_data['price'].tail(90),
-        mode='lines+markers',
-        name='Historical (90 Days)',
-        line=dict(color='#4facfe', width=3),
-        marker=dict(size=4)
-    ))
-    
-    # Forecast Data from Prophet
-    fig.add_trace(go.Scatter(
-        x=p_forecast['ds'].tail(30), 
-        y=p_forecast['yhat'].tail(30),
-        mode='lines',
-        name='AI Trend (Prophet)',
-        line=dict(color='#FFA500', width=2, dash='dot')
-    ))
-    
-    # Final Hybrid point
-    fig.add_trace(go.Scatter(
-        x=[p_forecast['ds'].iloc[-1]],
-        y=[predicted_price],
-        mode='markers',
-        name='Hybrid Prediction Target',
-        marker=dict(color='#FF4B4B', size=12, symbol='star')
-    ))
-    
-    fig.update_layout(
-        template="plotly_dark",
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showgrid=False),
-        yaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
-        height=500,
-        margin=dict(l=0, r=0, t=50, b=0)
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    if p_forecast is not None:
+        fig = go.Figure()
+        # Historical Data
+        fig.add_trace(go.Scatter(
+            x=current_data['date'].tail(90), 
+            y=current_data['price'].tail(90),
+            mode='lines+markers',
+            name='Historical (90 Days)',
+            line=dict(color='#4facfe', width=3),
+            marker=dict(size=4)
+        ))
+        
+        # Forecast Data from Prophet
+        fig.add_trace(go.Scatter(
+            x=p_forecast['ds'].tail(30), 
+            y=p_forecast['yhat'].tail(30),
+            mode='lines',
+            name='AI Trend (Prophet)',
+            line=dict(color='#FFA500', width=2, dash='dot')
+        ))
+        
+        # Final Hybrid point
+        fig.add_trace(go.Scatter(
+            x=[p_forecast['ds'].iloc[-1]],
+            y=[predicted_price],
+            mode='markers',
+            name='Hybrid Prediction Target',
+            marker=dict(color='#FF4B4B', size=12, symbol='star')
+        ))
+        
+        fig.update_layout(
+            template="plotly_dark",
+            paper_bgcolor='rgba(0,0,0,0)',
+            plot_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False),
+            yaxis=dict(gridcolor='rgba(255,255,255,0.1)'),
+            height=500,
+            margin=dict(l=0, r=0, t=50, b=0)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("📊 Price Forecast chart is unavailable because the AI model is not loaded.")
 
 with tab2:
     # Compare with other provinces

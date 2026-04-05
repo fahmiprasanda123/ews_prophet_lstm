@@ -1,0 +1,8 @@
+venv_new digunakan untuk unit testing
+
+./.venv_new/bin/pytest tests 
+
+untuk menjalankan app
+
+./.venv_new/bin/streamlit run app.py
+
