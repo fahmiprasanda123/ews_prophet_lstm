@@ -81,7 +81,7 @@ def load_data():
         df = pd.read_csv(synthetic_file)
         data_source = "Simulated Baseline (Synthetic)"
         
-    df['date'] = pd.to_datetime(df['date'])
+    df['date'] = pd.to_datetime(df['date'], format='mixed')
     return df, data_source
 
 def sync_pihps_data():
@@ -91,7 +91,7 @@ def sync_pihps_data():
         return
         
     df_existing = pd.read_csv(real_file)
-    df_existing['date'] = pd.to_datetime(df_existing['date'])
+    df_existing['date'] = pd.to_datetime(df_existing['date'], format='mixed')
     last_date = df_existing['date'].max()
     
     # Check if data is older than today (or last working day)
@@ -115,6 +115,8 @@ def sync_pihps_data():
             if new_data:
                 df_new = pd.DataFrame(new_data)
                 df_final = pd.concat([df_existing, df_new]).drop_duplicates(subset=['date', 'province', 'commodity'])
+                # Normalize to string format YYYY-MM-DD to avoid mixed format issues in CSV
+                df_final['date'] = pd.to_datetime(df_final['date']).dt.strftime('%Y-%m-%d')
                 df_final.to_csv(real_file, index=False)
                 status.update(label=f"✅ Updated {len(new_data)} records!", state="complete", expanded=False)
                 st.rerun()
