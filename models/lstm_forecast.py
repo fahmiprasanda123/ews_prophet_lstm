@@ -44,6 +44,15 @@ class LSTMForecaster:
             y.append(scaled_data[i+self.seq_length])
             
         return torch.FloatTensor(np.array(X)), torch.FloatTensor(np.array(y))
+        
+    def split_data(self, X, y, test_size=0.2):
+        """
+        Melakukan pemisahan dataset menjadi Training dan Testing secara berurutan (Time-series split).
+        """
+        split_idx = int(len(X) * (1 - test_size))
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+        return X_train, X_test, y_train, y_test
     
     def train_single_series(self, X, y, epochs=20):
         optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
@@ -71,17 +80,39 @@ class LSTMForecaster:
             return self.scaler.inverse_transform(prediction.numpy())
 
 if __name__ == "__main__":
+    from models.evaluation import calculate_metrics, print_evaluation_report
+    
     # Test on a single series
-    data_file = "/Users/fahmiprasanda/Documents/python/lstm_prophet/food_prices_indonesia.csv"
+    data_file = "/Users/fahmiprasanda/Documents/python/lstm_prophet/food_prices_real.csv"
     if os.path.exists(data_file):
         df = pd.read_csv(data_file)
         forecaster = LSTMForecaster()
-        X, y = forecaster.prepare_data(df, 'DKI Jakarta', 'Beras')
-        forecaster.train_single_series(X, y, epochs=10)
         
-        # Predict next value
+        # 1. Siapkan dataset
+        X, y = forecaster.prepare_data(df, 'DKI Jakarta', 'Beras')
+        
+        # 2. Pemisahan Data (Skenario Pengujian) - 80% Train, 20% Test
+        X_train, X_test, y_train, y_test = forecaster.split_data(X, y, test_size=0.2)
+        print(f"Dataset split: {len(X_train)} Train sequences, {len(X_test)} Test sequences.")
+        
+        # 3. Training
+        forecaster.train_single_series(X_train, y_train, epochs=10)
+        
+        # 4. Evaluasi (Metrik Evaluasi)
+        forecaster.model.eval()
+        with torch.no_grad():
+            y_pred_scaled = forecaster.model(X_test)
+            
+            # Kembalikan ke skala harga asli dari -1:1
+            y_pred = forecaster.scaler.inverse_transform(y_pred_scaled.numpy().reshape(-1, 1))
+            y_true = forecaster.scaler.inverse_transform(y_test.numpy().reshape(-1, 1))
+            
+            metrics = calculate_metrics(y_true, y_pred, model_name="LSTM (PyTorch)")
+            print_evaluation_report(metrics)
+            
+        # 5. Predict next value (Deployment scenario)
         last_30 = df[(df['province'] == 'DKI Jakarta') & (df['commodity'] == 'Beras')]['price'].values[-30:]
         pred = forecaster.predict(last_30)
-        print(f"Next day prediction: {pred[0][0]}")
+        print(f"\nNext day prediction: {pred[0][0]:,.0f}")
     else:
         print("Data file not found.")
