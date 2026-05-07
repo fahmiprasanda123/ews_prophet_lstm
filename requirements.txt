@@ -6,3 +6,20 @@ prophet>=1.1.0
 torch
 scikit-learn
 requests
+
+# v2.0 — Data Layer
+apscheduler>=3.10.0
+
+# v2.0 — API
+fastapi>=0.100.0
+uvicorn>=0.20.0
+pydantic>=2.0.0
+
+# v2.0 — Reports
+fpdf2>=2.7.0
+openpyxl>=3.1.0
+
+# v2.0 — TFT (optional, large dependency)
+# Uncomment below to enable Temporal Fusion Transformer:
+# pytorch-forecasting>=1.0.0
+# pytorch-lightning>=2.0.0
