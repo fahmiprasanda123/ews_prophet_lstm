@@ -1,0 +1,17 @@
+/Users/fahmiprasanda/Documents/python/lstm_prophet/.venv_new/lib/python3.9/site-packages/lightning/pytorch/utilities/parsing.py:210: Attribute 'loss' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['loss'])`.
+/Users/fahmiprasanda/Documents/python/lstm_prophet/.venv_new/lib/python3.9/site-packages/lightning/pytorch/utilities/parsing.py:210: Attribute 'logging_metrics' is an instance of `nn.Module` and is already saved during checkpointing. It is recommended to ignore them using `self.save_hyperparameters(ignore=['logging_metrics'])`.
+GPU available: False, used: False
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+/Users/fahmiprasanda/Documents/python/lstm_prophet/.venv_new/lib/python3.9/site-packages/pytorch_lightning/trainer/connectors/logger_connector/logger_connector.py:67: Starting from v1.9.0, `tensorboardX` has been removed as a dependency of the `pytorch_lightning` package, due to potential conflicts with other packages in the ML ecosystem. For this reason, `logger=True` will use `CSVLogger` as the default logger, unless the `tensorboard` or `tensorboardX` packages are found. Please `pip install lightning[extra]` or one of them to enable TensorBoard support by default
+Traceback (most recent call last):
+  File "/Users/fahmiprasanda/Documents/python/lstm_prophet/test_tft.py", line 8, in <module>
+    tft.train(dataset, max_epochs=1, batch_size=32)
+  File "/Users/fahmiprasanda/Documents/python/lstm_prophet/models/tft_forecast.py", line 170, in train
+    trainer.fit(self.model, train_dataloaders=train_dataloader)
+  File "/Users/fahmiprasanda/Documents/python/lstm_prophet/.venv_new/lib/python3.9/site-packages/pytorch_lightning/trainer/trainer.py", line 518, in fit
+    model = _maybe_unwrap_optimized(model)
+  File "/Users/fahmiprasanda/Documents/python/lstm_prophet/.venv_new/lib/python3.9/site-packages/pytorch_lightning/utilities/compile.py", line 125, in _maybe_unwrap_optimized
+    raise TypeError(
+TypeError: `model` must be a `LightningModule` or `torch._dynamo.OptimizedModule`, got `TemporalFusionTransformer`

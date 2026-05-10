@@ -1,0 +1,20 @@
+embeddings {
+  tensor_name: "province:00110"
+  metadata_path: "00110/province/metadata.tsv"
+  tensor_path: "00110/province/tensors.tsv"
+}
+embeddings {
+  tensor_name: "commodity:00110"
+  metadata_path: "00110/commodity/metadata.tsv"
+  tensor_path: "00110/commodity/tensors.tsv"
+}
+embeddings {
+  tensor_name: "month:00110"
+  metadata_path: "00110/month/metadata.tsv"
+  tensor_path: "00110/month/tensors.tsv"
+}
+embeddings {
+  tensor_name: "day_of_week:00110"
+  metadata_path: "00110/day_of_week/metadata.tsv"
+  tensor_path: "00110/day_of_week/tensors.tsv"
+}

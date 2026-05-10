@@ -20,7 +20,15 @@ env/
 .coverage
 htmlcov/
 
+# folder
+recom/
+
 # Data and Models (Optional, but often recommended for large binaries)
 # food_prices_real.csv
 # *.pth
 # *.h5
+
+# Database (auto-generated, too large for GitHub)
+*.db
+*.db-shm
+*.db-wal
