@@ -22,7 +22,7 @@ class Backtester:
 
     def walk_forward_test(self, province, commodity, 
                           train_window=180, test_window=30, step_size=30,
-                          model_type='prophet'):
+                          model_type='prophet', model_params=None):
         """Run walk-forward validation.
         
         Args:
@@ -52,14 +52,20 @@ class Backtester:
 
             train_data = series.iloc[start:train_end]
             test_data = series.iloc[train_end:test_end]
+            
+            params = model_params or {}
 
             try:
                 if model_type == 'prophet':
-                    preds = self._run_prophet_fold(train_data, test_data)
+                    preds = self._run_prophet_fold(train_data, test_data, params)
                 elif model_type == 'lstm':
-                    preds = self._run_lstm_fold(train_data, test_data)
+                    preds = self._run_lstm_fold(train_data, test_data, params)
+                elif model_type == 'tft':
+                    preds = self._run_tft_fold(train_data, test_data, province, commodity, params)
+                elif model_type == 'ensemble':
+                    preds = self._run_ensemble_fold(train_data, test_data, province, commodity, params)
                 else:
-                    preds = self._run_prophet_fold(train_data, test_data)
+                    preds = self._run_prophet_fold(train_data, test_data, params)
 
                 if preds is not None:
                     from models.evaluation import calculate_metrics
@@ -191,7 +197,7 @@ class Backtester:
             'worst_fold': max(range(len(mapes)), key=lambda i: mapes[i]),
         }
 
-    def _run_prophet_fold(self, train_data, test_data):
+    def _run_prophet_fold(self, train_data, test_data, params):
         """Run Prophet on a single fold."""
         try:
             from prophet import Prophet
@@ -199,9 +205,15 @@ class Backtester:
             return None
 
         train_df = train_data[['date', 'price']].rename(columns={'date': 'ds', 'price': 'y'})
+        
+        # Use params or defaults
+        cps = params.get('changepoint_prior_scale', 0.05)
+        ys = params.get('yearly_seasonality', True)
+        ws = params.get('weekly_seasonality', True)
+        
         model = Prophet(
-            yearly_seasonality=True, weekly_seasonality=True,
-            daily_seasonality=False, changepoint_prior_scale=0.05
+            yearly_seasonality=ys, weekly_seasonality=ws,
+            daily_seasonality=False, changepoint_prior_scale=cps
         )
         model.fit(train_df)
 
@@ -209,7 +221,7 @@ class Backtester:
         forecast = model.predict(future)
         return forecast['yhat'].values
 
-    def _run_lstm_fold(self, train_data, test_data):
+    def _run_lstm_fold(self, train_data, test_data, params):
         """Run LSTM on a single fold."""
         try:
             import torch
@@ -218,7 +230,13 @@ class Backtester:
             return None
 
         all_prices = train_data['price'].values
-        forecaster = LSTMForecaster(seq_length=30)
+        
+        # Use params or defaults
+        seq_len = params.get('seq_length', 30)
+        epochs = params.get('epochs', 5)
+        hidden_size = params.get('hidden_size', 128)
+        
+        forecaster = LSTMForecaster(seq_length=seq_len, hidden_size=hidden_size)
         
         # Fit scaler on training data
         from sklearn.preprocessing import MinMaxScaler
@@ -227,9 +245,9 @@ class Backtester:
 
         # Create sequences
         X, y = [], []
-        for i in range(len(scaled) - 30):
-            X.append(scaled[i:i+30])
-            y.append(scaled[i+30])
+        for i in range(len(scaled) - seq_len):
+            X.append(scaled[i:i+seq_len])
+            y.append(scaled[i+seq_len])
 
         if len(X) < 10:
             return None
@@ -237,9 +255,76 @@ class Backtester:
         X = torch.FloatTensor(np.array(X))
         y = torch.FloatTensor(np.array(y))
 
-        forecaster.train_single_series(X, y, epochs=5)
+        forecaster.train_single_series(X, y, epochs=epochs)
 
         # Predict
-        last_seq = all_prices[-30:]
+        last_seq = all_prices[-seq_len:]
         preds = forecaster.predict_multi_step(last_seq, steps=len(test_data))
         return preds
+
+    def _run_tft_fold(self, train_data, test_data, province, commodity, params):
+        """Run TFT on a single fold."""
+        try:
+            from models.tft_forecast import get_tft_forecaster
+            
+            # Use params or defaults
+            max_epochs = params.get('tft_max_epochs', 2)
+            batch_size = params.get('tft_batch_size', 32)
+            
+            tft = get_tft_forecaster(max_prediction_length=len(test_data))
+            if not tft.is_available:
+                return None
+            
+            # Combine train and test for dataset preparation
+            full_data = pd.concat([train_data, test_data])
+            
+            dataset, data = tft.prepare_dataset(full_data, province, commodity)
+            if dataset is None:
+                return None
+                
+            tft.train(dataset, max_epochs=max_epochs, batch_size=batch_size)
+            tft_pred = tft.predict(data, dataset)
+            
+            if tft_pred is not None:
+                pred_vals = tft_pred['mean']
+                # match length
+                if len(pred_vals) < len(test_data):
+                    pred_vals = np.pad(pred_vals, (0, len(test_data) - len(pred_vals)), 'edge')
+                elif len(pred_vals) > len(test_data):
+                    pred_vals = pred_vals[:len(test_data)]
+                return pred_vals
+                
+        except Exception as e:
+            logger.warning(f"TFT fold failed: {e}")
+        return None
+
+    def _run_ensemble_fold(self, train_data, test_data, province, commodity, params):
+        """Run Smart Ensemble on a single fold."""
+        from models.ensemble import SmartEnsemble
+        
+        preds_p = self._run_prophet_fold(train_data, test_data, params)
+        preds_l = self._run_lstm_fold(train_data, test_data, params)
+        preds_t = self._run_tft_fold(train_data, test_data, province, commodity, params)
+        
+        if preds_p is None and preds_l is None:
+            return None
+            
+        pred_dict = {}
+        if preds_p is not None:
+            pred_dict['prophet'] = {'mean': preds_p}
+        if preds_l is not None:
+            pred_dict['lstm'] = {'mean': preds_l}
+        if preds_t is not None:
+            pred_dict['tft'] = {'mean': preds_t}
+            
+        ensemble = SmartEnsemble()
+        res = ensemble.combine_forecasts(pred_dict)
+        ens_pred = res['mean']
+        
+        if len(ens_pred) < len(test_data):
+            ens_pred = np.pad(ens_pred, (0, len(test_data) - len(ens_pred)), 'edge')
+        elif len(ens_pred) > len(test_data):
+            ens_pred = ens_pred[:len(test_data)]
+            
+        return ens_pred
+

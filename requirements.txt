@@ -21,5 +21,5 @@ openpyxl>=3.1.0
 
 # v2.0 — TFT (optional, large dependency)
 # Uncomment below to enable Temporal Fusion Transformer:
-# pytorch-forecasting>=1.0.0
-# pytorch-lightning>=2.0.0
+pytorch-forecasting>=1.0.0
+pytorch-lightning>=2.0.0

@@ -15,6 +15,19 @@ from data.database import get_store
 
 st.set_page_config(page_title="Model Lab | Agri-AI EWS", page_icon="🔬", layout="wide")
 
+# --- Initialize Session State if not present ---
+if 'model_params' not in st.session_state:
+    st.session_state.model_params = {
+        'changepoint_prior_scale': 0.05,
+        'yearly_seasonality': True,
+        'weekly_seasonality': True,
+        'epochs': 10,
+        'hidden_size': 128,
+        'seq_length': 30,
+        'tft_max_epochs': 2,
+        'tft_batch_size': 32
+    }
+
 @st.cache_data
 def load_data():
     store = get_store()
@@ -37,6 +50,37 @@ st.sidebar.markdown("---")
 lab_province = st.sidebar.selectbox("Provinsi", sorted(df['province'].unique()), key="lab_prov", index=min(10, len(df['province'].unique())-1))
 lab_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), key="lab_comm", index=0)
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ Model Parameters")
+
+with st.sidebar.expander("🔮 Prophet Config", expanded=False):
+    p_cps = st.slider("Changepoint Prior Scale", 0.001, 0.5, st.session_state.model_params['changepoint_prior_scale'], format="%.3f")
+    p_yearly = st.checkbox("Yearly Seasonality", st.session_state.model_params['yearly_seasonality'])
+    p_weekly = st.checkbox("Weekly Seasonality", st.session_state.model_params['weekly_seasonality'])
+
+with st.sidebar.expander("🧠 LSTM Config", expanded=False):
+    l_epochs = st.number_input("Epochs", 5, 100, st.session_state.model_params['epochs'])
+    l_hidden = st.selectbox("Hidden Size", [32, 64, 128, 256], index=[32, 64, 128, 256].index(st.session_state.model_params['hidden_size']))
+    l_seq = st.slider("Sequence Length", 7, 60, st.session_state.model_params['seq_length'])
+
+with st.sidebar.expander("⚡ TFT Config", expanded=False):
+    t_epochs = st.number_input("Max Epochs", 1, 10, st.session_state.model_params['tft_max_epochs'])
+    t_batch = st.selectbox("Batch Size", [16, 32, 64], index=[16, 32, 64].index(st.session_state.model_params['tft_batch_size']))
+
+# Update session state
+st.session_state.model_params = {
+    'changepoint_prior_scale': p_cps,
+    'yearly_seasonality': p_yearly,
+    'weekly_seasonality': p_weekly,
+    'epochs': l_epochs,
+    'hidden_size': l_hidden,
+    'seq_length': l_seq,
+    'tft_max_epochs': t_epochs,
+    'tft_batch_size': t_batch
+}
+
+model_params = st.session_state.model_params
+
 st.title("🔬 Model Laboratory")
 st.markdown("### Bandingkan performa model AI dan jalankan backtesting")
 
@@ -52,6 +96,8 @@ with tab1:
         all_metrics = []
         predictions = {}
 
+        st.info(f"⚙️ Running with: Prophet(cps={model_params['changepoint_prior_scale']}), LSTM(epochs={model_params['epochs']}, seq={model_params['seq_length']})")
+
         # Prophet
         with st.spinner("Training Prophet..."):
             try:
@@ -60,7 +106,11 @@ with tab1:
                 fp = FoodPriceProphet(df)
                 p_df = fp.prepare_data(lab_province, lab_commodity)
                 train_df, test_df = fp.split_data(p_df, test_size=0.2)
-                m = Prophet(yearly_seasonality=True, weekly_seasonality=True, changepoint_prior_scale=0.05)
+                m = Prophet(
+                    yearly_seasonality=model_params['yearly_seasonality'], 
+                    weekly_seasonality=model_params['weekly_seasonality'], 
+                    changepoint_prior_scale=model_params['changepoint_prior_scale']
+                )
                 m.fit(train_df)
                 pred = m.predict(test_df[['ds']])
                 metrics = calculate_metrics(test_df['y'].values, pred['yhat'].values, "Prophet")
@@ -74,15 +124,26 @@ with tab1:
             try:
                 import torch
                 from models.lstm_forecast import LSTMForecaster
-                lf = LSTMForecaster(seq_length=30)
+                lf = LSTMForecaster(
+                    seq_length=model_params['seq_length'], 
+                    hidden_size=model_params['hidden_size']
+                )
                 X, y = lf.prepare_data(df, lab_province, lab_commodity)
                 Xtr, Xte, ytr, yte = lf.split_data(X, y, test_size=0.2)
-                lf.train_single_series(Xtr, ytr, epochs=10)
+                lf.train_single_series(Xtr, ytr, epochs=model_params['epochs'])
                 lf.model.eval()
                 with torch.no_grad():
                     yp = lf.model(Xte)
                     y_pred_lstm = lf.scaler.inverse_transform(yp.numpy().reshape(-1, 1)).flatten()
                     y_true_lstm = lf.scaler.inverse_transform(yte.numpy().reshape(-1, 1)).flatten()
+                    
+                    # Ensure matching length with Prophet's actual if possible
+                    if 'Prophet' in predictions:
+                        p_actual = predictions['Prophet']['actual']
+                        if len(y_pred_lstm) < len(p_actual):
+                            y_pred_lstm = np.pad(y_pred_lstm, (0, len(p_actual) - len(y_pred_lstm)), 'edge')
+                            y_true_lstm = np.pad(y_true_lstm, (0, len(p_actual) - len(y_true_lstm)), 'edge')
+
                     metrics = calculate_metrics(y_true_lstm, y_pred_lstm, "BiLSTM")
                     all_metrics.append(metrics)
                     predictions['BiLSTM'] = {'pred': y_pred_lstm, 'actual': y_true_lstm}
@@ -98,20 +159,56 @@ with tab1:
                     try:
                         dataset, data = tft.prepare_dataset(df, lab_province, lab_commodity)
                         if dataset is not None:
-                            tft.train(dataset, max_epochs=5, batch_size=32)
+                            tft.train(
+                                dataset, 
+                                max_epochs=model_params['tft_max_epochs'], 
+                                batch_size=model_params['tft_batch_size']
+                            )
                             tft_pred = tft.predict(data, dataset)
                             if tft_pred is not None:
-                                all_metrics.append({
-                                    "Model": "TFT",
-                                    "RMSE": 0, "MAE": 0, "MAPE (%)": 0,
-                                    "R²": 0, "SMAPE (%)": 0, "Directional Accuracy (%)": 0,
-                                })
+                                # Get predictions and calculate metrics
+                                actual = test_df['y'].values
+                                pred_vals = tft_pred['mean'][:len(actual)]
+                                if len(pred_vals) < len(actual):
+                                    # padding if needed, but normally TFT predict covers it
+                                    pred_vals = np.pad(pred_vals, (0, len(actual) - len(pred_vals)), 'edge')
+                                
+                                metrics = calculate_metrics(actual, pred_vals, "TFT")
+                                all_metrics.append(metrics)
+                                predictions['TFT'] = {'pred': pred_vals, 'actual': actual}
                     except Exception as e:
                         st.info(f"TFT: {e}")
             else:
                 st.info("ℹ️ TFT tidak tersedia (pytorch-forecasting belum diinstall).")
         except Exception:
             st.info("ℹ️ TFT module not available.")
+
+        # Ensemble
+        if 'Prophet' in predictions and 'BiLSTM' in predictions:
+            with st.spinner("Calculating Smart Ensemble..."):
+                from models.ensemble import SmartEnsemble
+                ensemble = SmartEnsemble()
+                
+                # prepare dict for ensemble
+                pred_dict = {
+                    'prophet': {'mean': predictions['Prophet']['pred']},
+                    'lstm': {'mean': predictions['BiLSTM']['pred']}
+                }
+                if 'TFT' in predictions:
+                    pred_dict['tft'] = {'mean': predictions['TFT']['pred']}
+                
+                ensemble_res = ensemble.combine_forecasts(pred_dict)
+                ens_pred = ensemble_res['mean']
+                
+                actual = predictions['Prophet']['actual']
+                if len(ens_pred) > len(actual):
+                    ens_pred = ens_pred[:len(actual)]
+                elif len(ens_pred) < len(actual):
+                    ens_pred = np.pad(ens_pred, (0, len(actual) - len(ens_pred)), 'edge')
+                
+                metrics = calculate_metrics(actual, ens_pred, "Smart Ensemble")
+                all_metrics.append(metrics)
+                predictions['Smart Ensemble'] = {'pred': ens_pred, 'actual': actual}
 
         if all_metrics:
             # Metrics comparison table
@@ -145,7 +242,7 @@ with tab1:
                     mode='lines', name='Actual', line=dict(color='white', width=3)
                 ))
                 
-                colors = {'Prophet': '#4facfe', 'BiLSTM': '#FFA500', 'TFT': '#FF4B4B'}
+                colors = {'Prophet': '#4facfe', 'BiLSTM': '#FFA500', 'TFT': '#FF4B4B', 'Smart Ensemble': '#00CC96'}
                 for model_name, pred_data in predictions.items():
                     pred_vals = pred_data['pred']
                     x = x_axis[:len(pred_vals)] if len(pred_vals) <= len(x_axis) else list(range(len(pred_vals)))
@@ -203,17 +300,19 @@ with tab2:
     test_window = bc2.number_input("Test Window (hari)", 7, 60, 30)
     step_size = bc3.number_input("Step Size (hari)", 7, 60, 30)
 
-    bt_model = st.selectbox("Model untuk Backtest", ["prophet", "lstm"])
+    bt_model = st.selectbox("Model untuk Backtest", ["prophet", "lstm", "tft", "ensemble"])
 
     if st.button("🔄 Jalankan Backtesting", key="run_bt"):
         from engine.backtester import Backtester
         bt = Backtester(df)
 
+        st.info(f"⚙️ Backtesting with: {bt_model.upper()} | Params: {model_params}")
         with st.spinner("Backtesting sedang berjalan... Ini bisa memakan waktu beberapa menit."):
             results = bt.walk_forward_test(
                 lab_province, lab_commodity,
                 train_window=train_window, test_window=test_window,
                 step_size=step_size, model_type=bt_model,
+                model_params=model_params
             )
 
         if results:

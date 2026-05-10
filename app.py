@@ -89,6 +89,19 @@ def init_database():
 
 store = init_database()
 
+# --- Initialize Global Session State for Model Parameters ---
+if 'model_params' not in st.session_state:
+    st.session_state.model_params = {
+        'changepoint_prior_scale': 0.05,
+        'yearly_seasonality': True,
+        'weekly_seasonality': True,
+        'epochs': 10,
+        'hidden_size': 128,
+        'seq_length': 30,
+        'tft_max_epochs': 2,
+        'tft_batch_size': 32
+    }
+
 # --- Landing Page ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2534/2534044.png", width=60)
 st.sidebar.title("🌾 Agri-AI EWS v2.0")
