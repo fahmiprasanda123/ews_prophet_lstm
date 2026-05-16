@@ -66,12 +66,16 @@ selected_province = st.sidebar.selectbox("🗺️ Provinsi", sorted(df['province
 selected_commodity = st.sidebar.selectbox("🌽 Komoditas", sorted(df['commodity'].unique()), index=0)
 
 max_date = df['date'].max() + datetime.timedelta(days=120)
-min_date = df['date'].max() + datetime.timedelta(days=1)
+today = datetime.date.today()
+# Use whichever is later: day after last data point or today
+min_date = max(df['date'].max().date() + datetime.timedelta(days=1), today)
+max_date_val = max(max_date.date() if hasattr(max_date, 'date') else max_date, today + datetime.timedelta(days=120))
+default_date = min(min_date + datetime.timedelta(days=29), max_date_val)
 forecast_date = st.sidebar.date_input(
     "📅 Target Prediksi",
-    value=min_date + datetime.timedelta(days=29),
+    value=default_date,
     min_value=min_date,
-    max_value=max_date
+    max_value=max_date_val
 )
 
 model_choice = st.sidebar.selectbox("🤖 Model AI", ["Smart Ensemble (All Models)", "Hybrid (Prophet + BiLSTM)", "TFT (Transformer)", "Prophet Only", "BiLSTM Only"], index=0)
