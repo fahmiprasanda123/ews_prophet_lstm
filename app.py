@@ -75,8 +75,9 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Initialize Database ---
+# --- Initialize Database & Auto-Sync Scheduler ---
 from data.database import get_store
+from data.scheduler import DataSyncScheduler
 
 @st.cache_resource
 def init_database():
@@ -87,7 +88,19 @@ def init_database():
         store.migrate_from_csv(csv_file)
     return store
 
+@st.cache_resource
+def init_scheduler(_store):
+    """Start background scheduler for automatic daily PIHPS sync.
+    
+    Runs immediately on startup if data is stale (> 1 day behind),
+    then repeats every 24 hours.
+    """
+    scheduler = DataSyncScheduler(_store)
+    scheduler.start(interval_hours=24, run_immediately=True)
+    return scheduler
+
 store = init_database()
+_scheduler = init_scheduler(store)
 
 # --- Initialize Global Session State for Model Parameters ---
 if 'model_params' not in st.session_state:
