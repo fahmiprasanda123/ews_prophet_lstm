@@ -128,22 +128,18 @@ with tab1:
                     seq_length=model_params['seq_length'], 
                     hidden_size=model_params['hidden_size']
                 )
-                X, y = lf.prepare_data(df, lab_province, lab_commodity)
-                Xtr, Xte, ytr, yte = lf.split_data(X, y, test_size=0.2)
+                # Use prepare_and_split to avoid data leakage
+                Xtr, Xte, ytr, yte = lf.prepare_and_split(
+                    df, lab_province, lab_commodity, test_size=0.2
+                )
                 lf.train_single_series(Xtr, ytr, epochs=model_params['epochs'])
                 lf.model.eval()
                 with torch.no_grad():
                     yp = lf.model(Xte)
                     y_pred_lstm = lf.scaler.inverse_transform(yp.numpy().reshape(-1, 1)).flatten()
                     y_true_lstm = lf.scaler.inverse_transform(yte.numpy().reshape(-1, 1)).flatten()
-                    
-                    # Ensure matching length with Prophet's actual if possible
-                    if 'Prophet' in predictions:
-                        p_actual = predictions['Prophet']['actual']
-                        if len(y_pred_lstm) < len(p_actual):
-                            y_pred_lstm = np.pad(y_pred_lstm, (0, len(p_actual) - len(y_pred_lstm)), 'edge')
-                            y_true_lstm = np.pad(y_true_lstm, (0, len(p_actual) - len(y_true_lstm)), 'edge')
 
+                    # Evaluate LSTM on its own test set (no padding)
                     metrics = calculate_metrics(y_true_lstm, y_pred_lstm, "BiLSTM")
                     all_metrics.append(metrics)
                     predictions['BiLSTM'] = {'pred': y_pred_lstm, 'actual': y_true_lstm}
@@ -183,32 +179,38 @@ with tab1:
         except Exception:
             st.info("ℹ️ TFT module not available.")
 
-        # Ensemble
+        # Ensemble — evaluate on a consistent common test set
         if 'Prophet' in predictions and 'BiLSTM' in predictions:
             with st.spinner("Calculating Smart Ensemble..."):
                 from models.ensemble import SmartEnsemble
                 ensemble = SmartEnsemble()
                 
-                # prepare dict for ensemble
+                # Find common test length (shortest prediction set)
+                common_len = min(len(predictions[m]['pred']) for m in predictions)
+                
+                # Trim all predictions to common length for ensemble
                 pred_dict = {
-                    'prophet': {'mean': predictions['Prophet']['pred']},
-                    'lstm': {'mean': predictions['BiLSTM']['pred']}
+                    'prophet': {'mean': predictions['Prophet']['pred'][:common_len]},
+                    'lstm': {'mean': predictions['BiLSTM']['pred'][:common_len]},
                 }
                 if 'TFT' in predictions:
-                    pred_dict['tft'] = {'mean': predictions['TFT']['pred']}
+                    pred_dict['tft'] = {'mean': predictions['TFT']['pred'][:common_len]}
                 
                 ensemble_res = ensemble.combine_forecasts(pred_dict)
                 ens_pred = ensemble_res['mean']
                 
-                actual = predictions['Prophet']['actual']
-                if len(ens_pred) > len(actual):
-                    ens_pred = ens_pred[:len(actual)]
-                elif len(ens_pred) < len(actual):
-                    ens_pred = np.pad(ens_pred, (0, len(actual) - len(ens_pred)), 'edge')
+                # Use the TAIL of Prophet's actual values to align with the common period
+                # (LSTM test set corresponds to the end of the time series, which is a
+                # subset of Prophet's test set)
+                prophet_actual = predictions['Prophet']['actual']
+                actual_common = prophet_actual[-common_len:]
                 
-                metrics = calculate_metrics(actual, ens_pred, "Smart Ensemble")
+                if len(ens_pred) > len(actual_common):
+                    ens_pred = ens_pred[:len(actual_common)]
+                
+                metrics = calculate_metrics(actual_common, ens_pred, "Smart Ensemble")
                 all_metrics.append(metrics)
-                predictions['Smart Ensemble'] = {'pred': ens_pred, 'actual': actual}
+                predictions['Smart Ensemble'] = {'pred': ens_pred, 'actual': actual_common}
 
         if all_metrics:
             # Metrics comparison table

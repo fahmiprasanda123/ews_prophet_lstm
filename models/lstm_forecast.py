@@ -63,12 +63,18 @@ class LSTMForecaster:
             dropout=dropout
         )
         self.scaler = MinMaxScaler(feature_range=(-1, 1))
+        self._is_trained = False
+        self._raw_prices = None
         
     def prepare_data(self, df, province, commodity):
+        """Prepare sequences from data. Note: fits scaler on ALL data.
+        For proper train/test evaluation, use prepare_and_split() instead.
+        """
         if torch is None:
             raise RuntimeError("PyTorch (torch) is not installed correctly. Forecast cannot be prepared.")
             
         subset = df[(df['province'] == province) & (df['commodity'] == commodity)]['price'].values
+        self._raw_prices = subset.copy()
         subset = subset.reshape(-1, 1)
         scaled_data = self.scaler.fit_transform(subset)
         
@@ -82,10 +88,63 @@ class LSTMForecaster:
     def split_data(self, X, y, test_size=0.2):
         """
         Melakukan pemisahan dataset menjadi Training dan Testing secara berurutan (Time-series split).
+        
+        PERINGATAN: Jika digunakan setelah prepare_data(), scaler sudah di-fit pada
+        seluruh dataset (data leakage). Untuk evaluasi yang benar, gunakan
+        prepare_and_split() yang fit scaler hanya pada data training.
         """
         split_idx = int(len(X) * (1 - test_size))
         X_train, X_test = X[:split_idx], X[split_idx:]
         y_train, y_test = y[:split_idx], y[split_idx:]
+        return X_train, X_test, y_train, y_test
+
+    def prepare_and_split(self, df, province, commodity, test_size=0.2):
+        """Prepare data AND split with proper scaler fitting (no data leakage).
+        
+        Fits MinMaxScaler ONLY on training data before transforming.
+        This prevents test data from influencing the scaling.
+        
+        Args:
+            df: DataFrame with province, commodity, price columns.
+            province: Province name.
+            commodity: Commodity name.
+            test_size: Fraction of sequences for testing.
+        
+        Returns:
+            X_train, X_test, y_train, y_test as torch tensors.
+        """
+        if torch is None:
+            raise RuntimeError("PyTorch (torch) is not installed correctly.")
+        
+        raw_prices = df[(df['province'] == province) & (df['commodity'] == commodity)]['price'].values
+        self._raw_prices = raw_prices.copy()
+        
+        total_sequences = len(raw_prices) - self.seq_length
+        split_idx = int(total_sequences * (1 - test_size))
+        
+        # Chronological split point: first test target index
+        # Training sequence i uses raw[i : i+seq_length] as input, raw[i+seq_length] as target
+        # Last training sequence: index (split_idx - 1), target at (split_idx - 1 + seq_length)
+        # First test sequence: index split_idx, target at (split_idx + seq_length)
+        # Fit scaler ONLY on data up to and including the last training target
+        train_end_raw = split_idx + self.seq_length  # exclusive end
+        self.scaler.fit(raw_prices[:train_end_raw].reshape(-1, 1))
+        
+        # Transform ALL data using training-fitted scaler
+        scaled_data = self.scaler.transform(raw_prices.reshape(-1, 1))
+        
+        # Create sequences
+        X, y = [], []
+        for i in range(len(scaled_data) - self.seq_length):
+            X.append(scaled_data[i:i+self.seq_length])
+            y.append(scaled_data[i+self.seq_length])
+        
+        X = torch.FloatTensor(np.array(X))
+        y = torch.FloatTensor(np.array(y))
+        
+        X_train, X_test = X[:split_idx], X[split_idx:]
+        y_train, y_test = y[:split_idx], y[split_idx:]
+        
         return X_train, X_test, y_train, y_test
     
     def train_single_series(self, X, y, epochs=20, lr=0.001):
@@ -101,11 +160,15 @@ class LSTMForecaster:
             optimizer.step()
             if (epoch+1) % 10 == 0:
                 print(f'Epoch {epoch+1} loss: {single_loss.item():10.8f}')
+        
+        self._is_trained = True
 
     def predict(self, last_sequence):
         """Predict the next single value."""
         if torch is None or self.model is None:
             raise RuntimeError("Model or PyTorch is not available.")
+        if not self._is_trained:
+            raise RuntimeError("Model belum dilatih. Panggil train_single_series() terlebih dahulu.")
             
         self.model.eval()
         with torch.no_grad():
@@ -129,6 +192,8 @@ class LSTMForecaster:
         """
         if torch is None or self.model is None:
             raise RuntimeError("Model or PyTorch is not available.")
+        if not self._is_trained:
+            raise RuntimeError("Model belum dilatih. Panggil train_single_series() terlebih dahulu.")
         
         self.model.eval()
         predictions = []
@@ -165,6 +230,8 @@ class LSTMForecaster:
         """
         if torch is None or self.model is None:
             raise RuntimeError("Model or PyTorch is not available.")
+        if not self._is_trained:
+            raise RuntimeError("Model belum dilatih. Panggil train_single_series() terlebih dahulu.")
         
         # Enable dropout during inference (MC Dropout)
         self.model.train()  # Keep dropout active
@@ -205,11 +272,10 @@ if __name__ == "__main__":
         df = pd.read_csv(data_file)
         forecaster = LSTMForecaster()
         
-        # 1. Siapkan dataset
-        X, y = forecaster.prepare_data(df, 'DKI Jakarta', 'Beras')
-        
-        # 2. Pemisahan Data (Skenario Pengujian) - 80% Train, 20% Test
-        X_train, X_test, y_train, y_test = forecaster.split_data(X, y, test_size=0.2)
+        # 1 & 2. Siapkan dataset + Pemisahan Data TANPA data leakage
+        X_train, X_test, y_train, y_test = forecaster.prepare_and_split(
+            df, 'DKI Jakarta', 'Beras', test_size=0.2
+        )
         print(f"Dataset split: {len(X_train)} Train sequences, {len(X_test)} Test sequences.")
         
         # 3. Training
