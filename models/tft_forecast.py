@@ -191,16 +191,34 @@ class TFTForecaster:
             train=False, batch_size=128, num_workers=0
         )
 
-        # Get predictions
-        predictions = self.model.predict(pred_dataloader, return_x=True)
-        pred_values = predictions.output.numpy()
+        # Get predictions — handle different pytorch-forecasting API versions
+        try:
+            predictions = self.model.predict(pred_dataloader, return_x=True)
+            # pytorch-forecasting may return .output (older) or direct tensor
+            if hasattr(predictions, 'output'):
+                pred_values = predictions.output
+            else:
+                pred_values = predictions
+            
+            # Convert to numpy if tensor
+            if hasattr(pred_values, 'numpy'):
+                pred_values = pred_values.detach().cpu().numpy()
+            else:
+                pred_values = np.array(pred_values)
+        except Exception as e:
+            logger.warning(f"TFT prediction failed: {e}")
+            raise
 
-        # Extract quantiles (median, 5th, 95th percentile)
+        # Extract quantiles (median, lower, upper)
         if pred_values.ndim == 3:
+            n_quantiles = pred_values.shape[2]
+            # Default quantiles for QuantileLoss: [0.02, 0.1, 0.25, 0.5, 0.75, 0.9, 0.98]
+            # Median index depends on number of quantiles
+            median_idx = n_quantiles // 2  # Median is the middle quantile
             return {
-                'mean': pred_values[:, :, 3].flatten(),    # Median (q=0.5)
-                'lower': pred_values[:, :, 0].flatten(),   # Lower (q=0.02)
-                'upper': pred_values[:, :, -1].flatten(),  # Upper (q=0.98)
+                'mean': pred_values[:, :, median_idx].flatten(),
+                'lower': pred_values[:, :, 0].flatten(),
+                'upper': pred_values[:, :, -1].flatten(),
             }
         else:
             return {

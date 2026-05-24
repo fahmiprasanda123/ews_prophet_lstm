@@ -94,6 +94,11 @@ class Backtester:
                           threshold_pct=10, lookback_days=365):
         """Test how accurately EWS detected historical price spikes.
         
+        NOTE: This uses "hindsight" — it feeds ACTUAL future prices as predictions
+        to the EWS engine. This tests the EWS scoring logic itself, NOT the
+        combined model+EWS pipeline. For model-based testing, use
+        walk_forward_test() + EWS scoring on the predictions.
+        
         Args:
             province, commodity: Target series.
             ews_engine: EWSEngineV2 instance.
@@ -132,13 +137,15 @@ class Backtester:
                 'avg_lead_time': 0,
                 'total_spikes': 0,
                 'events': [],
-                'message': 'Tidak ada spike terdeteksi dalam periode ini.'
+                'message': 'Tidak ada spike terdeteksi dalam periode ini.',
+                'note': 'Menggunakan hindsight (harga aktual sebagai prediksi).'
             }
 
         # Simulate EWS at each pre-spike point
         detected = 0
         events = []
-        for spike in spikes[-20:]:  # Limit to last 20 spikes
+        tested_spikes = spikes[-20:]  # Limit to last 20 spikes
+        for spike in tested_spikes:
             idx = spike['index']
             if idx < 30:
                 continue
@@ -149,7 +156,8 @@ class Backtester:
                 if check_idx < 0:
                     continue
                 current_p = prices[check_idx]
-                predicted_p = prices[idx]  # Hindsight
+                # NOTE: Using actual future price (hindsight), not model prediction
+                predicted_p = prices[idx]
                 try:
                     result = ews_engine.calculate_composite_score(
                         province, commodity, predicted_p
@@ -166,16 +174,19 @@ class Backtester:
                 except Exception:
                     pass
 
-        detection_rate = (detected / len(spikes) * 100) if spikes else 0
+        # Use tested_spikes count (not all spikes) for accurate detection rate
+        detection_rate = (detected / len(tested_spikes) * 100) if tested_spikes else 0
         avg_lead = np.mean([e['warning_lead_days'] for e in events]) if events else 0
 
         return {
             'detection_rate': round(detection_rate, 1),
-            'false_alarm_rate': 0,  # Simplified
+            'false_alarm_rate': 0,  # Simplified — would need non-spike windows to calculate
             'avg_lead_time': round(avg_lead, 1),
             'total_spikes': len(spikes),
+            'tested_spikes': len(tested_spikes),
             'detected_spikes': detected,
             'events': events,
+            'note': 'Menggunakan hindsight (harga aktual sebagai prediksi). Detection rate hanya mengukur akurasi logika EWS, bukan akurasi model prediksi.',
         }
 
     def get_summary(self, results):
