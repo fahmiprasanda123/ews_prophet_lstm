@@ -27,6 +27,20 @@ class ForecastPoint(BaseModel):
     upper_bound: Optional[float] = None
 
 
+class NarrativeFactor(BaseModel):
+    name: str
+    impact: str = Field(..., description="Impact level: high, medium, low")
+    description: str
+
+
+class PriceNarrative(BaseModel):
+    direction: str = Field(..., description="NAIK, TURUN, or STABIL")
+    pct_change: float
+    summary: str
+    factors: List[NarrativeFactor]
+    narrative: str
+
+
 class ForecastResponse(BaseModel):
     province: str
     commodity: str
@@ -35,6 +49,7 @@ class ForecastResponse(BaseModel):
     forecast: List[ForecastPoint]
     metrics: Optional[dict] = None
     ews_status: Optional[dict] = None
+    narrative: Optional[PriceNarrative] = None
 
 
 class EWSAlert(BaseModel):

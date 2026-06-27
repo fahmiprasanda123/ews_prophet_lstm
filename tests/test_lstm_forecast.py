@@ -102,3 +102,52 @@ def test_lstm_train_and_predict():
     multi = forecaster.predict_multi_step(last_10, steps=5)
     assert multi.shape == (5,)
 
+
+@pytest.mark.skipif(torch is None, reason="torch not installed")
+def test_lstm_mc_dropout_uncertainty():
+    """MC Dropout uncertainty should return mean, lower, upper, std."""
+    np.random.seed(42)
+    df = pd.DataFrame({
+        'date': pd.date_range(start='2024-01-01', periods=80, freq='D'),
+        'province': ['Aceh']*80,
+        'commodity': ['Beras']*80,
+        'price': np.random.randint(10000, 12000, 80)
+    })
+    
+    forecaster = LSTMForecaster(seq_length=10)
+    X_train, X_test, y_train, y_test = forecaster.prepare_and_split(
+        df, 'Aceh', 'Beras', test_size=0.2
+    )
+    forecaster.train_single_series(X_train, y_train, epochs=2)
+    
+    last_10 = np.random.randint(10000, 12000, 10)
+    result = forecaster.predict_with_uncertainty(last_10, steps=5, n_samples=10)
+    
+    assert 'mean' in result
+    assert 'lower' in result
+    assert 'upper' in result
+    assert 'std' in result
+    
+    assert result['mean'].shape == (5,)
+    assert result['lower'].shape == (5,)
+    assert result['upper'].shape == (5,)
+    assert result['std'].shape == (5,)
+    
+    # Lower should be <= mean <= upper
+    assert all(result['lower'] <= result['mean'])
+    assert all(result['mean'] <= result['upper'])
+    
+    # Std should be non-negative
+    assert all(result['std'] >= 0)
+
+
+@pytest.mark.skipif(torch is None, reason="torch not installed")
+def test_lstm_untrained_uncertainty_raises():
+    """predict_with_uncertainty should raise if model not trained."""
+    forecaster = LSTMForecaster(seq_length=10)
+    forecaster.scaler.fit(np.array([[10000], [11000]]))
+    
+    last_10 = np.random.randint(10000, 12000, 10)
+    with pytest.raises(RuntimeError, match="belum dilatih"):
+        forecaster.predict_with_uncertainty(last_10, steps=5)
+

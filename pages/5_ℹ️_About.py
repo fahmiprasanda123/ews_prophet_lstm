@@ -235,7 +235,7 @@ with m_tab1:
     | **Tipe** | Additive regression model |
     | **Komponen** | Trend + Yearly Seasonality + Weekly Seasonality |
     | **Confidence Interval** | 90% (configurable) |
-    | **External Regressors** | Curah hujan, suhu, ENSO index (opsional) |
+    | **External Regressors** | Curah hujan, ENSO index, musim hujan/kemarau (opsional) |
     | **Kelebihan** | Robust terhadap missing data, mudah di-tune, interpretable |
     | **Keterbatasan** | Kurang baik untuk short-term spikes |
     | **Digunakan untuk** | Tren jangka menengah-panjang (14-120 hari) |
@@ -422,11 +422,13 @@ Sistem menyediakan REST API (FastAPI) yang bisa diakses oleh aplikasi lain.
 | `/api/ews/status` | GET | Status peringatan dini semua komoditas |
 | `/api/models/compare` | GET | Perbandingan performa model |
 | `/api/data/prices` | GET | Data harga historis (filterable) |
+| `/api/data/latest` | GET | Harga terbaru per provinsi-komoditas |
 | `/api/data/commodities` | GET | Daftar komoditas |
 | `/api/data/provinces` | GET | Daftar provinsi |
 | `/api/data/stats` | GET | Statistik database |
 | `/api/data/supply-risk` | GET | Skor risiko pasokan |
 | `/api/data/sync` | POST | Trigger sinkronisasi data PIHPS |
+| `/health` | GET | Health check & status database |
 | `/docs` | GET | Swagger UI (auto-generated documentation) |
 
 **Base URL**: `http://localhost:8000` (saat dijalankan dengan `python run.py`)

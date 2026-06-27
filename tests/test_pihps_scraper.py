@@ -88,3 +88,56 @@ def test_fetch_data_retry(mock_get):
         result = scraper.fetch_data("1", "2024-01-01", "2024-01-02")
         assert result == {"data": []}
         assert mock_get.call_count == 2
+
+
+def test_process_json_unknown_commodity_ignored():
+    """Commodities not in commodity_map should be silently skipped."""
+    scraper = PihpsScraper()
+    mock_response = {
+        "data": [
+            {"name": "Unknown Commodity XYZ", "01/01/2024": "12.000"},
+            {"name": "Another Unknown", "01/01/2024": "5.000"},
+        ]
+    }
+    result = scraper.process_json(mock_response, "DKI Jakarta")
+    assert result == []
+
+
+def test_process_json_date_format_conversion():
+    """PIHPS dd/mm/yyyy should convert to yyyy-mm-dd."""
+    scraper = PihpsScraper()
+    mock_response = {
+        "data": [
+            {"name": "Beras", "25/12/2024": "12.000"}
+        ]
+    }
+    result = scraper.process_json(mock_response, "DKI Jakarta")
+    assert len(result) == 1
+    assert result[0]['date'] == "2024-12-25"
+
+
+def test_process_json_price_cleaning():
+    """Both dot and comma thousand separators should be handled."""
+    scraper = PihpsScraper()
+    # PIHPS uses dots as thousands separator: "12.000" = 12000
+    mock_response = {
+        "data": [
+            {"name": "Beras", "01/01/2024": "125.000"}
+        ]
+    }
+    result = scraper.process_json(mock_response, "DKI Jakarta")
+    assert result[0]['price'] == 125000.0
+
+
+def test_commodity_map_has_10_entries():
+    """Should map exactly 10 raw names to 10 standard commodities."""
+    scraper = PihpsScraper()
+    assert len(scraper.commodity_map) == 10
+    
+    expected_outputs = {
+        'Beras', 'Daging Ayam', 'Daging Sapi', 'Telur Ayam',
+        'Bawang Merah', 'Bawang Putih', 'Cabai Merah', 'Cabai Rawit',
+        'Minyak Goreng', 'Gula Pasir'
+    }
+    assert set(scraper.commodity_map.values()) == expected_outputs
+

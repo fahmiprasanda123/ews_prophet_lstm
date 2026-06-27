@@ -85,3 +85,46 @@ def test_prophet_split_data():
     
     # Train dates should come before test dates (chronological)
     assert train_df['ds'].max() < test_df['ds'].min()
+
+
+@pytest.mark.skipif(Prophet is None, reason="prophet not installed")
+@patch("models.prophet_forecast.Prophet")
+def test_prophet_with_weather_regressors(mock_prophet):
+    """Test that weather regressors are added to the Prophet model."""
+    dates = pd.to_datetime(['2024-01-01', '2024-01-02', '2024-01-03'])
+    df = pd.DataFrame({
+        'date': dates,
+        'province': ['Aceh'] * 3,
+        'commodity': ['Beras'] * 3,
+        'price': [10000, 11000, 12000]
+    })
+    
+    # Weather data with the 3 expected regressors
+    weather_df = pd.DataFrame({
+        'rainfall_mm': [5.0, 3.0, 8.0],
+        'enso_index': [0.5, 0.5, 0.5],
+        'is_wet_season': [1, 1, 1],
+    }, index=dates)
+    
+    # Setup mock
+    model_instance = MagicMock()
+    future_df = pd.DataFrame({'ds': pd.to_datetime(['2024-01-04'])})
+    model_instance.make_future_dataframe.return_value = future_df
+    model_instance.predict.return_value = pd.DataFrame({
+        'ds': dates.tolist() + [pd.Timestamp('2024-01-04')],
+        'yhat': [10000, 11000, 12000, 12500],
+        'yhat_lower': [9500, 10500, 11500, 12000],
+        'yhat_upper': [10500, 11500, 12500, 13000],
+        'trend': [10000, 10500, 11000, 11500],
+    })
+    mock_prophet.return_value = model_instance
+    
+    forecaster = FoodPriceProphet(df)
+    forecast = forecaster.train_and_forecast('Aceh', 'Beras', periods=1, weather_df=weather_df)
+    
+    # Verify add_regressor was called for weather columns
+    regressor_calls = [call[0][0] for call in model_instance.add_regressor.call_args_list]
+    assert 'rainfall_mm' in regressor_calls
+    assert 'enso_index' in regressor_calls
+    assert 'is_wet_season' in regressor_calls
+

@@ -106,3 +106,40 @@ class TestDataStore:
     def test_empty_db(self):
         df = self.store.load_all()
         assert df.empty
+
+    def test_get_last_date_empty(self):
+        result = self.store.get_last_date()
+        assert result is None
+
+    def test_get_last_date_with_data(self):
+        self.store.insert_prices([
+            {'date': '2025-01-01', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': 10000},
+            {'date': '2025-01-05', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': 10500},
+        ])
+        result = self.store.get_last_date()
+        assert result == '2025-01-05'
+
+    def test_migrate_from_csv_file_not_found(self):
+        """Missing CSV should return 0 without error."""
+        result = self.store.migrate_from_csv(csv_path="/nonexistent/path.csv")
+        assert result == 0
+
+    def test_migrate_from_csv_skips_if_data_exists(self):
+        """Already-populated DB should skip migration."""
+        self.store.insert_prices([
+            {'date': '2025-01-01', 'province': 'X', 'commodity': 'Y', 'price': 1000},
+        ])
+        result = self.store.migrate_from_csv(csv_path=self.db_path)
+        assert result == 1  # Returns existing count, not re-importing
+
+    def test_get_series_with_date_filter(self):
+        self.store.insert_prices([
+            {'date': '2025-01-01', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': 10000},
+            {'date': '2025-01-02', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': 10100},
+            {'date': '2025-01-03', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': 10200},
+        ])
+        series = self.store.get_series('DKI Jakarta', 'Beras', 
+                                        start_date='2025-01-02', end_date='2025-01-03')
+        assert len(series) == 2
+        assert series['price'].iloc[0] == 10100
+

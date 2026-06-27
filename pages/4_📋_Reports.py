@@ -91,6 +91,14 @@ with tab1:
                 scorer = SupplyRiskScorer(df)
                 supply_risk = scorer.calculate_risk_score(rpt_province, rpt_commodity)
 
+                # Generate Narrative Analysis
+                from engine.price_narrative import PriceNarrativeAnalyzer
+                narrator = PriceNarrativeAnalyzer(df)
+                narrative_result = narrator.generate_narrative(
+                    rpt_province, rpt_commodity, predicted_price,
+                    datetime.datetime.now()
+                )
+
                 # Generate PDF
                 from report.pdf_generator import EWSReportGenerator
                 gen = EWSReportGenerator()
@@ -123,6 +131,25 @@ with tab1:
                 pc3, pc4 = st.columns(2)
                 pc3.metric("Harga Saat Ini", f"IDR {current_price:,.0f}")
                 pc4.metric("Harga Prediksi", f"IDR {predicted_price:,.0f}")
+
+                # Narrative Preview
+                if narrative_result and narrative_result.get('direction') != 'UNKNOWN':
+                    st.markdown("---")
+                    st.markdown("### 📝 Analisis Penyebab Prediksi")
+                    
+                    direction = narrative_result['direction']
+                    pct = narrative_result.get('pct_change', 0)
+                    dir_icons = {'NAIK': '🔺', 'TURUN': '🔻', 'STABIL': '➡️'}
+                    
+                    st.markdown(f"**{dir_icons.get(direction, '➡️')} Harga diprediksi {direction} ({pct:+.1f}%)**")
+                    st.info(narrative_result.get('summary', ''))
+                    
+                    for f in narrative_result.get('factors', []):
+                        impact_icons = {'high': '🔴', 'medium': '🟡', 'low': '🟢'}
+                        st.markdown(f"{impact_icons.get(f['impact'], '⚪')} **{f['name']}**: {f['description'][:200]}...")
+                    
+                    with st.expander("📖 Narasi Lengkap"):
+                        st.markdown(narrative_result.get('narrative', ''))
 
             except ImportError as e:
                 st.error(f"❌ Dependency belum terinstall: {e}")
