@@ -19,6 +19,7 @@ from models.tft_forecast import get_tft_forecaster
 from models.ensemble import SmartEnsemble
 from engine.ews_engine_v2 import EWSEngineV2
 from engine.supply_risk import SupplyRiskScorer
+from engine.price_narrative import PriceNarrativeAnalyzer
 from models.evaluation import calculate_metrics
 try:
     from prophet import Prophet
@@ -319,9 +320,13 @@ if predicted_price is not None:
     ews_result = ews.calculate_composite_score(selected_province, selected_commodity, predicted_price, forecast_date)
     supply_scorer = SupplyRiskScorer(df)
     supply_risk = supply_scorer.calculate_risk_score(selected_province, selected_commodity)
+    # Generate narrative analysis
+    narrator = PriceNarrativeAnalyzer(df)
+    narrative_result = narrator.generate_narrative(selected_province, selected_commodity, predicted_price, forecast_date)
 else:
     ews_result = {'level': 'Unknown', 'score': 0, 'message': 'AI Model offline', 'color': '#666', 'factors': {}, 'recommendations': []}
     supply_risk = {'score': 0, 'trend_direction': 'N/A', 'description': 'N/A', 'factors': {}}
+    narrative_result = None
 
 with col2:
     level = ews_result.get('level', 'Unknown')
@@ -400,6 +405,100 @@ vol_change = volatility - vol_7d_ago
 m3.metric("Volatilitas Pasar", f"{volatility:.2f}%", f"{vol_change:+.2f}%")
 
 m4.metric("Supply Risk Score", f"{supply_risk['score']:.0f}/100", supply_risk['trend_direction'])
+
+# --- Narrative Analysis Section ---
+if narrative_result and narrative_result.get('direction') != 'UNKNOWN':
+    st.markdown("### 📝 Analisis Penyebab Prediksi Harga")
+    
+    # Direction badge
+    direction = narrative_result['direction']
+    pct = narrative_result.get('pct_change', 0)
+    dir_config = {
+        'NAIK': {'icon': '🔺', 'color': '#FF4B4B', 'bg': 'rgba(255,75,75,0.1)', 'border': 'rgba(255,75,75,0.3)', 'label': 'HARGA DIPREDIKSI NAIK'},
+        'TURUN': {'icon': '🔻', 'color': '#00CC96', 'bg': 'rgba(0,204,150,0.1)', 'border': 'rgba(0,204,150,0.3)', 'label': 'HARGA DIPREDIKSI TURUN'},
+        'STABIL': {'icon': '➡️', 'color': '#4facfe', 'bg': 'rgba(79,172,254,0.1)', 'border': 'rgba(79,172,254,0.3)', 'label': 'HARGA DIPREDIKSI STABIL'},
+    }
+    dcfg = dir_config.get(direction, dir_config['STABIL'])
+    
+    st.markdown(f"""
+        <div style="
+            background: {dcfg['bg']};
+            border: 2px solid {dcfg['border']};
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        ">
+            <div style="font-size: 2.5rem;">{dcfg['icon']}</div>
+            <div>
+                <div style="font-size: 1.1rem; font-weight: 800; color: {dcfg['color']}; letter-spacing: 1px;">
+                    {dcfg['label']} ({pct:+.1f}%)
+                </div>
+                <div style="font-size: 0.9rem; opacity: 0.85; margin-top: 4px; line-height: 1.4;">
+                    {narrative_result.get('summary', '')}
+                </div>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    # Factor details in expandable sections
+    factors = narrative_result.get('factors', [])
+    if factors:
+        impact_icons = {'high': '🔴', 'medium': '🟡', 'low': '🟢'}
+        impact_labels = {'high': 'Dampak Tinggi', 'medium': 'Dampak Sedang', 'low': 'Dampak Rendah'}
+        
+        # Show factors in columns for high-impact, then expanders for the rest
+        high_factors = [f for f in factors if f['impact'] == 'high']
+        other_factors = [f for f in factors if f['impact'] != 'high']
+        
+        if high_factors:
+            for f in high_factors:
+                impact_icon = impact_icons.get(f['impact'], '⚪')
+                st.markdown(f"""
+                    <div style="
+                        background: rgba(255,75,75,0.08);
+                        border-left: 4px solid #FF4B4B;
+                        border-radius: 0 8px 8px 0;
+                        padding: 14px 18px;
+                        margin-bottom: 10px;
+                    ">
+                        <div style="font-weight: 700; margin-bottom: 6px;">
+                            {impact_icon} {f['name']} — <span style="color: #FF4B4B; font-size: 0.8rem;">{impact_labels.get(f['impact'], '')}</span>
+                        </div>
+                        <div style="font-size: 0.85rem; line-height: 1.6; opacity: 0.9;">
+                            {f['description']}
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
+        
+        if other_factors:
+            with st.expander(f"📋 Lihat {len(other_factors)} faktor lainnya", expanded=False):
+                for f in other_factors:
+                    impact_icon = impact_icons.get(f['impact'], '⚪')
+                    border_color = '#FFD700' if f['impact'] == 'medium' else '#00CC96'
+                    bg_color = 'rgba(255,215,0,0.06)' if f['impact'] == 'medium' else 'rgba(0,204,150,0.06)'
+                    st.markdown(f"""
+                        <div style="
+                            background: {bg_color};
+                            border-left: 4px solid {border_color};
+                            border-radius: 0 8px 8px 0;
+                            padding: 12px 16px;
+                            margin-bottom: 8px;
+                        ">
+                            <div style="font-weight: 700; margin-bottom: 4px;">
+                                {impact_icon} {f['name']} — <span style="font-size: 0.8rem; color: {border_color};">{impact_labels.get(f['impact'], '')}</span>
+                            </div>
+                            <div style="font-size: 0.85rem; line-height: 1.6; opacity: 0.9;">
+                                {f['description']}
+                            </div>
+                        </div>
+                    """, unsafe_allow_html=True)
+    
+    # Full narrative in expander
+    with st.expander("📖 Baca Narasi Analisis Lengkap", expanded=False):
+        st.markdown(narrative_result.get('narrative', ''))
 
 # --- Charts ---
 st.markdown("### 📊 Market Intelligence")

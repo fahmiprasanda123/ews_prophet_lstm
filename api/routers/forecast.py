@@ -7,7 +7,7 @@ import pandas as pd
 
 from api.schemas import (
     ForecastResponse, ForecastPoint, EWSStatusResponse, EWSAlert, 
-    ModelComparisonResponse, ModelMetrics
+    ModelComparisonResponse, ModelMetrics, PriceNarrative, NarrativeFactor
 )
 from data.database import get_store
 
@@ -33,6 +33,7 @@ def get_forecast(
         raise HTTPException(status_code=404, detail=f"No data for {commodity} in {province}")
 
     current_price = series['price'].iloc[-1]
+    last_date = series['date'].max()
 
     try:
         if model in ("prophet", "hybrid"):
@@ -50,10 +51,25 @@ def get_forecast(
                     upper_bound=round(float(row['yhat_upper']), 2),
                 ))
 
+            # Generate narrative
+            from engine.price_narrative import PriceNarrativeAnalyzer
+            narrator = PriceNarrativeAnalyzer(df)
+            target_date = (last_date + timedelta(days=days)).strftime('%Y-%m-%d')
+            last_pred_price = points[-1].predicted_price if points else float(current_price)
+            narr = narrator.generate_narrative(province, commodity, last_pred_price, target_date)
+            narrative = PriceNarrative(
+                direction=narr['direction'],
+                pct_change=narr['pct_change'],
+                summary=narr['summary'],
+                factors=[NarrativeFactor(**f) for f in narr.get('factors', [])],
+                narrative=narr['narrative'],
+            )
+
             return ForecastResponse(
                 province=province, commodity=commodity,
                 model_used=model, current_price=float(current_price),
                 forecast=points[:days],
+                narrative=narrative,
             )
 
         elif model == "lstm":
@@ -73,10 +89,25 @@ def get_forecast(
                 for i, p in enumerate(preds)
             ]
 
+            # Generate narrative
+            from engine.price_narrative import PriceNarrativeAnalyzer
+            narrator = PriceNarrativeAnalyzer(df)
+            target_date = (last_date + timedelta(days=days)).strftime('%Y-%m-%d')
+            last_pred_price = points[-1].predicted_price if points else float(current_price)
+            narr = narrator.generate_narrative(province, commodity, last_pred_price, target_date)
+            narrative = PriceNarrative(
+                direction=narr['direction'],
+                pct_change=narr['pct_change'],
+                summary=narr['summary'],
+                factors=[NarrativeFactor(**f) for f in narr.get('factors', [])],
+                narrative=narr['narrative'],
+            )
+
             return ForecastResponse(
                 province=province, commodity=commodity,
                 model_used="lstm", current_price=float(current_price),
                 forecast=points,
+                narrative=narrative,
             )
         else:
             raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
