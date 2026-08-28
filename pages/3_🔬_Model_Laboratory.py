@@ -98,6 +98,55 @@ with tab1:
 
         st.info(f"⚙️ Running with: Prophet(cps={model_params['changepoint_prior_scale']}), LSTM(epochs={model_params['epochs']}, seq={model_params['seq_length']})")
 
+        # === CONVENTIONAL BASELINES ===
+        from models.conventional_forecast import ConventionalForecaster
+        conv = ConventionalForecaster(df)
+
+        # Naïve Seasonal
+        with st.spinner("Running Naïve Seasonal..."):
+            try:
+                naive_res = conv.naive_seasonal_forecast(lab_province, lab_commodity, test_size=0.2)
+                if naive_res is not None:
+                    metrics = calculate_metrics(naive_res['y_true'], naive_res['y_pred'], "Naïve Seasonal")
+                    all_metrics.append(metrics)
+                    predictions['Naïve Seasonal'] = {
+                        'dates': naive_res['dates'],
+                        'pred': naive_res['y_pred'],
+                        'actual': naive_res['y_true'],
+                    }
+            except Exception as e:
+                st.warning(f"Naïve Seasonal error: {e}")
+
+        # Moving Average (SMA-30)
+        with st.spinner("Running Moving Average (SMA-30)..."):
+            try:
+                sma_res = conv.moving_average_forecast(lab_province, lab_commodity, test_size=0.2, window=30)
+                if sma_res is not None:
+                    metrics = calculate_metrics(sma_res['y_true'], sma_res['y_pred'], "SMA-30")
+                    all_metrics.append(metrics)
+                    predictions['SMA-30'] = {
+                        'dates': sma_res['dates'],
+                        'pred': sma_res['y_pred'],
+                        'actual': sma_res['y_true'],
+                    }
+            except Exception as e:
+                st.warning(f"SMA-30 error: {e}")
+
+        # ARIMA
+        with st.spinner("Training ARIMA(5,1,0)..."):
+            try:
+                arima_res = conv.arima_forecast(lab_province, lab_commodity, test_size=0.2, order=(5, 1, 0))
+                if arima_res is not None:
+                    metrics = calculate_metrics(arima_res['y_true'], arima_res['y_pred'], "ARIMA(5,1,0)")
+                    all_metrics.append(metrics)
+                    predictions['ARIMA(5,1,0)'] = {
+                        'dates': arima_res['dates'],
+                        'pred': arima_res['y_pred'],
+                        'actual': arima_res['y_true'],
+                    }
+            except Exception as e:
+                st.warning(f"ARIMA error: {e}")
+
         # Prophet
         with st.spinner("Training Prophet..."):
             try:
@@ -244,7 +293,7 @@ with tab1:
                     mode='lines', name='Actual', line=dict(color='white', width=3)
                 ))
                 
-                colors = {'Prophet': '#4facfe', 'BiLSTM': '#FFA500', 'TFT': '#FF4B4B', 'Smart Ensemble': '#00CC96'}
+                colors = {'Naïve Seasonal': '#888888', 'SMA-30': '#A0A0A0', 'ARIMA(5,1,0)': '#C0C0C0', 'Prophet': '#4facfe', 'BiLSTM': '#FFA500', 'TFT': '#FF4B4B', 'Smart Ensemble': '#00CC96'}
                 for model_name, pred_data in predictions.items():
                     pred_vals = pred_data['pred']
                     x = x_axis[:len(pred_vals)] if len(pred_vals) <= len(x_axis) else list(range(len(pred_vals)))
@@ -302,7 +351,7 @@ with tab2:
     test_window = bc2.number_input("Test Window (hari)", 7, 60, 30)
     step_size = bc3.number_input("Step Size (hari)", 7, 60, 30)
 
-    bt_model = st.selectbox("Model untuk Backtest", ["prophet", "lstm", "tft", "ensemble"])
+    bt_model = st.selectbox("Model untuk Backtest", ["naive", "sma", "arima", "prophet", "lstm", "tft", "ensemble"])
 
     if st.button("🔄 Jalankan Backtesting", key="run_bt"):
         from engine.backtester import Backtester
