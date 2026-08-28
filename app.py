@@ -16,64 +16,9 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- Global CSS ---
-st.markdown("""
-<style>
-    .main {
-        background: linear-gradient(135deg, #0E1117 0%, #1a1c24 100%);
-        color: #E0E0E0;
-    }
-    .stMetric {
-        background: rgba(255, 255, 255, 0.05);
-        backdrop-filter: blur(10px);
-        padding: 15px;
-        border-radius: 12px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-    }
-    [data-testid="stMetricValue"] {
-        font-size: 1.6rem !important;
-        overflow-wrap: break-word;
-        white-space: normal !important;
-    }
-    .warning-card {
-        padding: 20px;
-        border-radius: 15px;
-        color: white;
-        margin-bottom: 20px;
-        text-align: center;
-        font-size: 1.1rem;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
-        backdrop-filter: blur(4px);
-        border: 1px solid rgba(255, 255, 255, 0.18);
-    }
-    .stButton>button {
-        background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
-        color: white;
-        border: none;
-        padding: 8px 20px;
-        border-radius: 8px;
-        font-weight: bold;
-    }
-    [data-testid="stSidebar"] {
-        background-color: #0E1117;
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    header {visibility: hidden;}
-    .factor-bar {
-        height: 8px;
-        border-radius: 4px;
-        margin: 2px 0;
-    }
-    .score-badge {
-        display: inline-block;
-        padding: 4px 12px;
-        border-radius: 20px;
-        font-weight: bold;
-        font-size: 0.85rem;
-    }
-</style>
-""", unsafe_allow_html=True)
+# --- Theme System ---
+from theme import inject_theme_css, render_theme_toggle, theme_color
+inject_theme_css()
 
 # --- Initialize Database & Auto-Sync Scheduler ---
 from data.database import get_store
@@ -119,6 +64,7 @@ if 'model_params' not in st.session_state:
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2534/2534044.png", width=60)
 st.sidebar.title("🌾 Agri-AI EWS v2.0")
 st.sidebar.caption("Early Warning System for Food Security")
+render_theme_toggle()
 st.sidebar.markdown("---")
 
 # Show DB stats
@@ -138,15 +84,9 @@ st.title("🌾 Agri-AI Early Warning System v2.0")
 st.markdown("### Platform Peringatan Dini Harga Pangan Indonesia")
 
 st.markdown("""
-<div style="
-    background: linear-gradient(135deg, rgba(79,172,254,0.15) 0%, rgba(0,242,254,0.08) 100%);
-    border: 1px solid rgba(79,172,254,0.3);
-    border-radius: 16px;
-    padding: 30px;
-    margin: 20px 0;
-">
-    <h4 style="color: #4facfe; margin-top: 0;">Selamat Datang di Agri-AI EWS v2.0</h4>
-    <p style="color: #ccc; font-size: 1.05rem;">
+<div class="theme-accent-box">
+    <h4>Selamat Datang di Agri-AI EWS v2.0</h4>
+    <p>
         Sistem peringatan dini berbasis AI untuk memantau dan memprediksi harga 
         <strong>10 komoditas pangan strategis</strong> di <strong>34 provinsi Indonesia</strong>, 
         menggunakan hybrid model <strong>Prophet + Bidirectional LSTM + Temporal Fusion Transformer</strong>.
@@ -170,38 +110,38 @@ col1, col2 = st.columns(2)
 
 with col1:
     st.markdown("""
-    <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; margin: 8px 0; border: 1px solid rgba(255,255,255,0.1);">
+    <div class="theme-card">
         <h4>🏠 Dashboard Utama</h4>
-        <p style="color: #aaa;">Forecast harga dengan confidence interval, EWS multi-faktor, dan analisis supply risk real-time.</p>
+        <p>Forecast harga dengan confidence interval, EWS multi-faktor, dan analisis supply risk real-time.</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
-    <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; margin: 8px 0; border: 1px solid rgba(255,255,255,0.1);">
+    <div class="theme-card">
         <h4>🔬 Model Laboratory</h4>
-        <p style="color: #aaa;">Bandingkan performa Prophet, LSTM, dan TFT. Jalankan backtesting walk-forward.</p>
+        <p>Bandingkan performa Prophet, LSTM, dan TFT. Jalankan backtesting walk-forward.</p>
     </div>
     """, unsafe_allow_html=True)
 
 with col2:
     st.markdown("""
-    <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; margin: 8px 0; border: 1px solid rgba(255,255,255,0.1);">
+    <div class="theme-card">
         <h4>🗺️ Regional Analysis</h4>
-        <p style="color: #aaa;">Peta choropleth interaktif Indonesia dengan drill-down per provinsi dan analisis disparitas.</p>
+        <p>Peta choropleth interaktif Indonesia dengan drill-down per provinsi dan analisis disparitas.</p>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
-    <div style="background: rgba(255,255,255,0.05); border-radius: 12px; padding: 20px; margin: 8px 0; border: 1px solid rgba(255,255,255,0.1);">
+    <div class="theme-card">
         <h4>📋 Reports</h4>
-        <p style="color: #aaa;">Generate laporan PDF dan Excel untuk download. Termasuk analisis EWS dan rekomendasi.</p>
+        <p>Generate laporan PDF dan Excel untuk download. Termasuk analisis EWS dan rekomendasi.</p>
     </div>
     """, unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")
 st.markdown("""
-<div style="display: flex; justify-content: space-between; opacity: 0.5; font-size: 0.8rem;">
+<div class="theme-footer">
     <div>ENGINE: PROPHET v1.1 + PYTORCH BiLSTM + TFT</div>
     <div>DATA: PIHPS Bank Indonesia</div>
     <div>© 2026 Fahmi Prasanda</div>
