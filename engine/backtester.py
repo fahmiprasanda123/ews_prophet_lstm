@@ -64,6 +64,12 @@ class Backtester:
                     preds = self._run_tft_fold(train_data, test_data, province, commodity, params)
                 elif model_type == 'ensemble':
                     preds = self._run_ensemble_fold(train_data, test_data, province, commodity, params)
+                elif model_type == 'naive':
+                    preds = self._run_naive_fold(train_data, test_data, params)
+                elif model_type == 'sma':
+                    preds = self._run_sma_fold(train_data, test_data, params)
+                elif model_type == 'arima':
+                    preds = self._run_arima_fold(train_data, test_data, params)
                 else:
                     preds = self._run_prophet_fold(train_data, test_data, params)
 
@@ -338,4 +344,25 @@ class Backtester:
             ens_pred = ens_pred[:len(test_data)]
             
         return ens_pred
+
+    def _run_naive_fold(self, train_data, test_data, params):
+        """Run Naïve Seasonal on a single fold."""
+        from models.conventional_forecast import ConventionalForecaster
+        conv = ConventionalForecaster(pd.DataFrame())  # dummy, we use direct method
+        seasonal_period = params.get('seasonal_period', 365)
+        return conv.naive_multi_step(train_data['price'].values, len(test_data), seasonal_period)
+
+    def _run_sma_fold(self, train_data, test_data, params):
+        """Run SMA on a single fold."""
+        from models.conventional_forecast import ConventionalForecaster
+        conv = ConventionalForecaster(pd.DataFrame())
+        window = params.get('sma_window', 30)
+        return conv.sma_multi_step(train_data['price'].values, len(test_data), window)
+
+    def _run_arima_fold(self, train_data, test_data, params):
+        """Run ARIMA on a single fold."""
+        from models.conventional_forecast import ConventionalForecaster
+        conv = ConventionalForecaster(pd.DataFrame())
+        order = params.get('arima_order', (5, 1, 0))
+        return conv.arima_multi_step(train_data['price'].values, len(test_data), order)
 

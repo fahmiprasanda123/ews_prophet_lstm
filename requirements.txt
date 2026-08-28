@@ -9,6 +9,7 @@ requests
 
 # v2.0 — Data Layer
 apscheduler>=3.10.0
+statsmodels>=0.14.0
 
 # v2.0 — API
 fastapi>=0.100.0
