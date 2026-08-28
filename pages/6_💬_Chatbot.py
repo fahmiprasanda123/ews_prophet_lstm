@@ -14,56 +14,51 @@ from engine.chatbot_engine import ChatbotEngine
 
 st.set_page_config(page_title="Chatbot | Agri-AI EWS", page_icon="💬", layout="wide")
 
-# --- CSS ---
-st.markdown("""
-<style>
-    header {visibility: hidden;}
-    .main {
-        background: linear-gradient(135deg, #0E1117 0%, #1a1c24 100%);
-    }
-    [data-testid="stSidebar"] {
-        background-color: #0E1117;
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-    }
+# --- Theme ---
+from theme import inject_theme_css, render_theme_toggle, theme_color, get_plotly_template, get_plotly_layout, apply_theme_to_plotly
+inject_theme_css()
 
+# --- Additional Chatbot CSS ---
+st.markdown(f"""
+<style>
     /* Chat container */
-    .chat-header {
-        background: linear-gradient(135deg, rgba(79,172,254,0.15) 0%, rgba(0,242,254,0.08) 100%);
-        border: 1px solid rgba(79,172,254,0.3);
+    .chat-header {{
+        background: var(--accent-bg);
+        border: 1px solid var(--accent-border);
         border-radius: 16px;
         padding: 24px;
         margin-bottom: 20px;
         text-align: center;
-    }
-    .chat-header h2 {
-        color: #4facfe;
+    }}
+    .chat-header h2 {{
+        color: var(--accent);
         margin: 0 0 8px 0;
-    }
-    .chat-header p {
-        color: #aaa;
+    }}
+    .chat-header p {{
+        color: var(--text-secondary);
         margin: 0;
         font-size: 0.95rem;
-    }
+    }}
 
     /* Quick action buttons */
-    .quick-actions {
+    .quick-actions {{
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
         margin: 16px 0;
         justify-content: center;
-    }
+    }}
 
     /* Streamlit chat message styling */
-    [data-testid="stChatMessage"] {
-        background: rgba(255, 255, 255, 0.03) !important;
-        border: 1px solid rgba(255, 255, 255, 0.06);
+    [data-testid="stChatMessage"] {{
+        background: {theme_color('chat_msg_bg')} !important;
+        border: 1px solid {theme_color('chat_msg_border')};
         border-radius: 12px !important;
         margin-bottom: 8px;
-    }
+    }}
 
     /* Status badge */
-    .status-badge {
+    .status-badge {{
         display: inline-block;
         padding: 3px 10px;
         border-radius: 12px;
@@ -72,7 +67,7 @@ st.markdown("""
         background: rgba(0, 200, 83, 0.15);
         color: #00c853;
         border: 1px solid rgba(0, 200, 83, 0.3);
-    }
+    }}
 </style>
 """, unsafe_allow_html=True)
 
@@ -93,6 +88,7 @@ if "pending_quick_action" not in st.session_state:
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2534/2534044.png", width=60)
 st.sidebar.title("💬 Agri-AI Chatbot")
 st.sidebar.caption("Asisten virtual harga pangan")
+render_theme_toggle()
 st.sidebar.markdown("---")
 
 st.sidebar.markdown("### 💡 Contoh Pertanyaan")
@@ -159,7 +155,7 @@ def _render_chart(chart_data, chart_type, chart_title):
             y="price",
             color="province",
             title=chart_title,
-            template="plotly_dark",
+            template=get_plotly_template(),
         )
     elif chart_type == "forecast":
         fig = go.Figure()
@@ -209,28 +205,13 @@ def _render_chart(chart_data, chart_type, chart_title):
                 marker=dict(size=3),
             ))
 
-        fig.update_layout(title=chart_title, template="plotly_dark")
-    else:  # default line chart
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=chart_data["date"],
-            y=chart_data["price"],
-            mode="lines+markers",
-            line=dict(color="#4facfe", width=2),
-            marker=dict(size=3),
-            fill="tozeroy",
-            fillcolor="rgba(79, 172, 254, 0.1)",
-        ))
-        fig.update_layout(title=chart_title, template="plotly_dark")
-
-    fig.update_layout(
+    apply_theme_to_plotly(
+        fig,
+        title=chart_title,
         height=350,
         margin=dict(l=20, r=20, t=50, b=20),
         xaxis_title="",
         yaxis_title="Harga (Rp)",
-        font=dict(size=12),
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig, use_container_width=True, key=f"chart_{id(chart_data)}")
 
@@ -276,7 +257,7 @@ if user_input := st.chat_input("Tanyakan tentang harga pangan... 🌾"):
 # --- Footer ---
 st.markdown("---")
 st.markdown("""
-<div style="display: flex; justify-content: space-between; opacity: 0.4; font-size: 0.75rem;">
+<div class="theme-footer">
     <div>AGRI-AI CHATBOT v1.0</div>
     <div>RULE-BASED + DATA-DRIVEN</div>
     <div>© 2026 Fahmi Prasanda</div>

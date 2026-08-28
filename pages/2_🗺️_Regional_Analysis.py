@@ -16,6 +16,10 @@ from data.database import get_store
 
 st.set_page_config(page_title="Regional Analysis | Agri-AI EWS", page_icon="🗺️", layout="wide")
 
+# --- Theme ---
+from theme import inject_theme_css, render_theme_toggle, theme_color, get_plotly_template, get_plotly_layout, get_plotly_yaxis, apply_theme_to_plotly
+inject_theme_css()
+
 # Province name mapping: our data names → GeoJSON names
 PROVINCE_TO_GEOJSON = {
     "Aceh": "DI. ACEH", "Bali": "BALI", "Banten": "PROBANTEN",
@@ -68,6 +72,7 @@ if df.empty:
 
 # --- Sidebar ---
 st.sidebar.title("🗺️ Regional Analysis")
+render_theme_toggle()
 st.sidebar.markdown("---")
 selected_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), index=0)
 st.sidebar.markdown("---")
@@ -105,14 +110,15 @@ if geojson is not None:
         visible=False,
         bgcolor='rgba(0,0,0,0)',
     )
-    fig_map.update_layout(
-        template="plotly_dark",
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
+    apply_theme_to_plotly(
+        fig_map,
         height=500,
         margin=dict(l=0, r=0, t=30, b=0),
         title=f"Peta Harga {selected_commodity} — Indonesia",
     )
+    if hasattr(fig_map.data[0], "colorbar") and fig_map.data[0].colorbar is not None:
+        fig_map.data[0].colorbar.tickfont = dict(color=theme_color('text_secondary'))
+        fig_map.data[0].colorbar.title.font = dict(color=theme_color('text_primary'))
     st.plotly_chart(fig_map, use_container_width=True)
 else:
     st.warning("⚠️ GeoJSON file not found. Install it at `assets/indonesia.geojson`.")
@@ -147,15 +153,15 @@ with col_a:
         marker_color=colors,
         hovertemplate="<b>%{x}</b><br>IDR %{y:,.0f}/kg<extra></extra>",
     ))
-    fig_bar.add_hline(y=nat_avg, line_dash="dash", line_color="white", opacity=0.5,
-                      annotation_text=f"Rata-rata: IDR {nat_avg:,.0f}")
-    fig_bar.update_layout(
-        template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)', height=400,
-        xaxis=dict(showgrid=False, tickangle=45),
-        yaxis=dict(gridcolor='rgba(255,255,255,0.1)', title='Harga (IDR/kg)'),
+    fig_bar.add_hline(y=nat_avg, line_dash="dash", line_color=theme_color('plotly_hline'), opacity=0.5,
+                      annotation_text=f"Rata-rata: IDR {nat_avg:,.0f}",
+                      annotation_font_color=theme_color('text_primary'))
+    apply_theme_to_plotly(
+        fig_bar, height=400,
         title="Harga per Provinsi (merah = di atas rata-rata + 1σ)",
     )
+    fig_bar.update_xaxes(showgrid=False, tickangle=45)
+    fig_bar.update_yaxes(title='Harga (IDR/kg)')
     st.plotly_chart(fig_bar, use_container_width=True)
 
 with col_b:
@@ -195,9 +201,8 @@ if not prov_series.empty:
             mode='lines', name='MA-30',
             line=dict(color='#FFA500', width=2, dash='dash'),
         ))
-        fig_trend.update_layout(
-            template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)', height=350,
+        apply_theme_to_plotly(
+            fig_trend, height=350,
             title=f"Tren Harga 180 Hari — {drill_province}",
         )
         st.plotly_chart(fig_trend, use_container_width=True)
@@ -211,8 +216,7 @@ if not prov_series.empty:
             labels={'price': 'Harga (IDR/kg)', 'commodity': ''},
             title=f"Semua Komoditas — {drill_province}",
         )
-        fig_comm.update_layout(
-            template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)', height=350, showlegend=False,
+        apply_theme_to_plotly(
+            fig_comm, height=350, showlegend=False,
         )
         st.plotly_chart(fig_comm, use_container_width=True)

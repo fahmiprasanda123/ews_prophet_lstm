@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 st.set_page_config(page_title="About | Agri-AI EWS", page_icon="ℹ️", layout="wide")
 
+# --- Theme ---
+from theme import inject_theme_css, theme_color
+inject_theme_css()
+
 # --- Header ---
 st.title("ℹ️ Tentang Agri-AI EWS v2.0")
 st.markdown("### Dokumentasi Lengkap Sistem Peringatan Dini Harga Pangan Indonesia")
@@ -52,7 +56,7 @@ with ds_tab1:
         padding: 20px;
         margin: 10px 0;
     ">
-        <table style="width: 100%; color: #ddd;">
+        <table class="theme-table">
             <tr><td style="width: 160px;"><strong>📡 Sumber</strong></td><td>Pusat Informasi Harga Pangan Strategis Nasional (PIHPS), Bank Indonesia</td></tr>
             <tr><td><strong>🌐 Website</strong></td><td><a href="https://www.bi.go.id/hargapangan" target="_blank">https://www.bi.go.id/hargapangan</a></td></tr>
             <tr><td><strong>📅 Rentang</strong></td><td>Januari 2021 — Sekarang (update harian pada hari kerja)</td></tr>
@@ -81,14 +85,8 @@ with ds_tab1:
     for i, (icon, name, desc) in enumerate(commodities):
         with cols[i % 2]:
             st.markdown(f"""
-            <div style="
-                background: rgba(255,255,255,0.04);
-                border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 8px;
-                padding: 10px 15px;
-                margin: 4px 0;
-            ">
-                {icon} <strong>{name}</strong> — <span style="color: #aaa;">{desc}</span>
+            <div class="commodity-item">
+                {icon} <strong>{name}</strong> — <span>{desc}</span>
             </div>
             """, unsafe_allow_html=True)
 
@@ -111,7 +109,7 @@ with ds_tab2:
         padding: 20px;
         margin: 10px 0;
     ">
-        <table style="width: 100%; color: #ddd;">
+        <table class="theme-table">
             <tr><td style="width: 160px;"><strong>📡 Sumber</strong></td><td>Open-Meteo — Free Weather API</td></tr>
             <tr><td><strong>🌐 Website</strong></td><td><a href="https://open-meteo.com" target="_blank">https://open-meteo.com</a></td></tr>
             <tr><td><strong>📜 Lisensi</strong></td><td>CC BY 4.0 (gratis untuk non-komersial, atribusi wajib)</td></tr>
@@ -190,7 +188,7 @@ with ds_tab3:
         padding: 20px;
         margin: 10px 0;
     ">
-        <table style="width: 100%; color: #ddd;">
+        <table class="theme-table">
             <tr><td style="width: 160px;"><strong>📡 Sumber</strong></td><td>NOAA Climate Prediction Center (CPC)</td></tr>
             <tr><td><strong>🌐 Website</strong></td><td><a href="https://www.cpc.ncep.noaa.gov" target="_blank">https://www.cpc.ncep.noaa.gov</a></td></tr>
             <tr><td><strong>📜 Lisensi</strong></td><td>Public Domain (data milik pemerintah AS)</td></tr>
@@ -441,12 +439,7 @@ st.markdown("---")
 st.markdown("## 📜 Credits & Atribusi")
 
 st.markdown("""
-<div style="
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px;
-    padding: 20px;
-">
+<div class="credits-card">
 
 | Komponen | Provider | Lisensi |
 |----------|----------|---------|
@@ -465,7 +458,7 @@ st.markdown("""
 st.markdown("---")
 
 st.markdown("""
-<div style="text-align: center; opacity: 0.5; font-size: 0.85rem; padding: 20px 0;">
+<div style="text-align: center; opacity: 0.5; font-size: 0.85rem; padding: 20px 0; color: var(--text-secondary);">
     <div><strong>Agri-AI Early Warning System v2.0</strong></div>
     <div>© 2026 Fahmi Prasanda</div>
     <div style="margin-top: 8px;">

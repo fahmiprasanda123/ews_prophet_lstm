@@ -15,6 +15,10 @@ from data.database import get_store
 
 st.set_page_config(page_title="Model Lab | Agri-AI EWS", page_icon="🔬", layout="wide")
 
+# --- Theme ---
+from theme import inject_theme_css, render_theme_toggle, theme_color, get_plotly_template, get_plotly_layout, get_plotly_yaxis, apply_theme_to_plotly
+inject_theme_css()
+
 # --- Initialize Session State if not present ---
 if 'model_params' not in st.session_state:
     st.session_state.model_params = {
@@ -46,6 +50,7 @@ if df.empty:
 
 # Sidebar
 st.sidebar.title("🔬 Model Laboratory")
+render_theme_toggle()
 st.sidebar.markdown("---")
 lab_province = st.sidebar.selectbox("Provinsi", sorted(df['province'].unique()), key="lab_prov", index=min(10, len(df['province'].unique())-1))
 lab_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), key="lab_comm", index=0)
@@ -290,7 +295,7 @@ with tab1:
 
                 fig.add_trace(go.Scatter(
                     x=x_axis, y=predictions['Prophet']['actual'],
-                    mode='lines', name='Actual', line=dict(color='white', width=3)
+                    mode='lines', name='Actual', line=dict(color=theme_color('plotly_actual_line'), width=3)
                 ))
                 
                 colors = {'Naïve Seasonal': '#888888', 'SMA-30': '#A0A0A0', 'ARIMA(5,1,0)': '#C0C0C0', 'Prophet': '#4facfe', 'BiLSTM': '#FFA500', 'TFT': '#FF4B4B', 'Smart Ensemble': '#00CC96'}
@@ -303,12 +308,11 @@ with tab1:
                         line=dict(color=colors.get(model_name, '#FF4B4B'), width=2, dash='dot')
                     ))
 
-                fig.update_layout(
-                    template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)',
-                    plot_bgcolor='rgba(0,0,0,0)', height=450,
-                    yaxis=dict(title='Harga (IDR/kg)', gridcolor='rgba(255,255,255,0.1)'),
+                apply_theme_to_plotly(
+                    fig, height=450,
                     legend=dict(orientation="h", yanchor="bottom", y=1.02),
                 )
+                fig.update_yaxes(title='Harga (IDR/kg)')
                 st.plotly_chart(fig, use_container_width=True)
 
             # Radar chart for metrics comparison
@@ -333,9 +337,14 @@ with tab1:
                         r=vals + [vals[0]], theta=categories + [categories[0]],
                         fill='toself', name=m['Model'], opacity=0.6,
                     ))
-                fig_radar.update_layout(
-                    template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)',
-                    polar=dict(bgcolor='rgba(0,0,0,0)'), height=400,
+                apply_theme_to_plotly(
+                    fig_radar,
+                    polar=dict(
+                        bgcolor='rgba(0,0,0,0)',
+                        radialaxis=dict(tickfont=dict(color=theme_color('text_secondary'))),
+                        angularaxis=dict(tickfont=dict(color=theme_color('text_primary')))
+                    ),
+                    height=400,
                 )
                 st.plotly_chart(fig_radar, use_container_width=True)
     else:
@@ -384,23 +393,23 @@ with tab2:
                 marker_color=['#00CC96' if m < 10 else '#FFA500' if m < 20 else '#FF4B4B' for m in fold_mapes],
                 text=[f"{m:.1f}%" for m in fold_mapes], textposition='auto',
             ))
-            fig_bt.add_hline(y=summary['avg_mape'], line_dash="dash", line_color="white",
-                            annotation_text=f"Avg: {summary['avg_mape']:.1f}%")
-            fig_bt.update_layout(
-                template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)', height=400,
-                title="MAPE per Fold", yaxis=dict(title='MAPE (%)'),
+            fig_bt.add_hline(y=summary['avg_mape'], line_dash="dash", line_color=theme_color('plotly_hline'),
+                            annotation_text=f"Avg: {summary['avg_mape']:.1f}%",
+                            annotation_font_color=theme_color('text_primary'))
+            apply_theme_to_plotly(
+                fig_bt, height=400,
+                title="MAPE per Fold",
             )
+            fig_bt.update_yaxes(title='MAPE (%)')
             st.plotly_chart(fig_bt, use_container_width=True)
 
             # Actual vs Predicted overlay for best fold
             best = results[summary['best_fold']]
             fig_best = go.Figure()
-            fig_best.add_trace(go.Scatter(y=best['actuals'], name='Actual', line=dict(color='white', width=2)))
+            fig_best.add_trace(go.Scatter(y=best['actuals'], name='Actual', line=dict(color=theme_color('plotly_actual_line'), width=2)))
             fig_best.add_trace(go.Scatter(y=best['predictions'], name='Predicted', line=dict(color='#4facfe', width=2, dash='dot')))
-            fig_best.update_layout(
-                template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)',
-                plot_bgcolor='rgba(0,0,0,0)', height=350,
+            apply_theme_to_plotly(
+                fig_best, height=350,
                 title=f"Best Fold ({best['test_start']} → {best['test_end']}) — MAPE: {best['metrics']['MAPE (%)']:.2f}%",
             )
             st.plotly_chart(fig_best, use_container_width=True)
@@ -467,13 +476,12 @@ with tab3:
             text=[f"{abs(f[1]):.3f}" for f in sorted_features],
             textposition='auto',
         ))
-        fig_imp.update_layout(
-            template="plotly_dark", paper_bgcolor='rgba(0,0,0,0)',
-            plot_bgcolor='rgba(0,0,0,0)', height=max(300, len(sorted_features) * 30),
+        apply_theme_to_plotly(
+            fig_imp, height=max(300, len(sorted_features) * 30),
             title="Feature Importance (Absolute Correlation)",
-            xaxis=dict(title='|Correlation|'),
-            yaxis=dict(autorange='reversed'),
         )
+        fig_imp.update_xaxes(title='|Correlation|')
+        fig_imp.update_yaxes(autorange='reversed')
         st.plotly_chart(fig_imp, use_container_width=True)
 
         st.markdown("""

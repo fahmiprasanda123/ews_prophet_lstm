@@ -28,6 +28,10 @@ except ImportError:
 
 st.set_page_config(page_title="Dashboard | Agri-AI EWS", page_icon="🏠", layout="wide")
 
+# --- Theme ---
+from theme import inject_theme_css, render_theme_toggle, theme_color, get_plotly_template, get_plotly_layout, get_plotly_yaxis, apply_theme_to_plotly
+inject_theme_css()
+
 # --- Initialize Session State if not present ---
 if 'model_params' not in st.session_state:
     st.session_state.model_params = {
@@ -61,6 +65,7 @@ if df.empty:
 # --- Sidebar ---
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2534/2534044.png", width=50)
 st.sidebar.title("📊 Control Panel")
+render_theme_toggle()
 st.sidebar.markdown("---")
 
 selected_province = st.sidebar.selectbox("🗺️ Provinsi", sorted(df['province'].unique()), index=min(10, len(df['province'].unique())-1))
@@ -548,13 +553,13 @@ with tab1:
                     line=dict(color='#FF4B4B', width=3),
                 ))
 
-        fig.update_layout(
-            template="plotly_dark",
-            paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-            xaxis=dict(showgrid=False), yaxis=dict(gridcolor='rgba(255,255,255,0.1)', title='Harga (IDR/kg)'),
+        apply_theme_to_plotly(
+            fig,
             height=500, margin=dict(l=0, r=0, t=50, b=0),
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
+        fig.update_xaxes(showgrid=False)
+        fig.update_yaxes(title='Harga (IDR/kg)')
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("📊 Chart tidak tersedia. AI model belum terhubung.")
@@ -564,10 +569,10 @@ with tab2:
     fig_comp = px.bar(
         latest_all.sort_values('price', ascending=False), x='province', y='price',
         color='price', title=f"Distribusi Harga: {selected_commodity}",
-        template="plotly_dark", color_continuous_scale="Viridis",
+        color_continuous_scale="Viridis",
         labels={'price': 'Harga (IDR/kg)', 'province': ''}
     )
-    fig_comp.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+    apply_theme_to_plotly(fig_comp)
     st.plotly_chart(fig_comp, use_container_width=True)
 
 with tab3:
@@ -578,7 +583,7 @@ with tab3:
         corr = prov_data.corr()
         fig_corr = px.imshow(corr, text_auto=".2f", aspect="auto", color_continuous_scale='RdBu_r',
                              title=f"Matriks Korelasi — {selected_province}")
-        fig_corr.update_layout(paper_bgcolor='rgba(0,0,0,0)')
+        apply_theme_to_plotly(fig_corr)
         st.plotly_chart(fig_corr, use_container_width=True)
     with col_b:
         st.write("**Analisis Faktor EWS**")
@@ -630,7 +635,7 @@ with tab4:
 # Footer
 st.markdown("---")
 st.markdown("""
-<div style="display: flex; justify-content: space-between; opacity: 0.5; font-size: 0.8rem;">
+<div class="theme-footer">
     <div>ENGINE: PROPHET + BiLSTM + TFT</div>
     <div>DATA: PIHPS Bank Indonesia</div>
     <div>© 2026 Fahmi Prasanda</div>

@@ -14,6 +14,10 @@ from data.database import get_store
 
 st.set_page_config(page_title="Reports | Agri-AI EWS", page_icon="📋", layout="wide")
 
+# --- Theme ---
+from theme import inject_theme_css, render_theme_toggle, theme_color
+inject_theme_css()
+
 @st.cache_data
 def load_data():
     store = get_store()
@@ -32,6 +36,7 @@ if df.empty:
 
 # Sidebar
 st.sidebar.title("📋 Reports")
+render_theme_toggle()
 st.sidebar.markdown("---")
 rpt_province = st.sidebar.selectbox("Provinsi", sorted(df['province'].unique()), key="rpt_prov", index=min(10, len(df['province'].unique())-1))
 rpt_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), key="rpt_comm", index=0)
@@ -40,13 +45,7 @@ st.title("📋 Report Generator")
 st.markdown("### Generate laporan analisis untuk download")
 
 st.markdown(f"""
-<div style="
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.15);
-    border-radius: 12px;
-    padding: 20px;
-    margin-bottom: 20px;
-">
+<div class="theme-card">
     <strong>Target Laporan:</strong> {rpt_commodity} di {rpt_province}
 </div>
 """, unsafe_allow_html=True)
