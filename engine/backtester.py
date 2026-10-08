@@ -165,7 +165,11 @@ class Backtester:
                 # NOTE: Using actual future price (hindsight), not model prediction
                 predicted_p = prices[idx]
                 try:
-                    result = ews_engine.calculate_composite_score(
+                    # Mesin EWS dibangun ulang hanya dengan data s.d. tanggal pengecekan agar
+                    # "harga saat ini" = harga pada tanggal tersebut (sebelumnya: harga terbaru).
+                    asof = pd.Timestamp(dates[check_idx])
+                    engine_asof = ews_engine.__class__(self.df[self.df['date'] <= asof])
+                    result = engine_asof.calculate_composite_score(
                         province, commodity, predicted_p
                     )
                     if result['level'] in ['Danger', 'Alert']:

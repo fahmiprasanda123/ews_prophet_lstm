@@ -45,7 +45,7 @@ class TFTForecaster:
     def is_available(self):
         return self._is_available
 
-    def prepare_dataset(self, df, province=None, commodity=None, weather_df=None):
+    def prepare_dataset(self, df, province=None, commodity=None, weather_df=None, use_all_data=False):
         """Prepare data for TFT training.
         
         Args:
@@ -93,7 +93,9 @@ class TFTForecaster:
         data = data.dropna(subset=['price'])
 
         max_time_idx = data['time_idx'].max()
-        training_cutoff = max_time_idx - self.max_prediction_length
+        # use_all_data=True dipakai untuk prakiraan operasional (seluruh data dilatih);
+        # bawaan menyisihkan max_prediction_length hari terakhir (jendela uji backtester).
+        training_cutoff = max_time_idx if use_all_data else max_time_idx - self.max_prediction_length
 
         self.training_dataset = TimeSeriesDataSet(
             data[data['time_idx'] <= training_cutoff],
@@ -114,8 +116,105 @@ class TFTForecaster:
 
         return self.training_dataset, data
 
+    # ------------------------------------------------------------------ #
+    # Dipakai protokol evaluasi tesis (models/evaluation_protocol.py)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def build_frame(price_series, province, commodity, covariates=None):
+        """Bangun DataFrame harian untuk TFT dari deret harga ber-indeks tanggal harian kontinu.
+
+        Args:
+            price_series: pd.Series harga dengan DatetimeIndex harian tanpa celah.
+            province, commodity: Pengenal statis.
+            covariates: DataFrame opsional ber-indeks tanggal (mis. rainfall_30d,
+                temperature_30d, enso_avail) yang akan disejajarkan per tanggal.
+        """
+        frame = pd.DataFrame({'date': pd.DatetimeIndex(price_series.index),
+                              'price': np.asarray(price_series.values, dtype=float)})
+        frame['province'] = province
+        frame['commodity'] = commodity
+        frame['group_id'] = f"{province}_{commodity}"
+        frame['time_idx'] = np.arange(len(frame))
+        frame['month'] = frame['date'].dt.month.astype(str)
+        frame['day_of_week'] = frame['date'].dt.dayofweek.astype(str)
+        frame['is_wet_season'] = frame['date'].dt.month.isin([11, 12, 1, 2, 3, 4]).astype(float)
+        if covariates is not None:
+            cov = covariates.reindex(pd.DatetimeIndex(price_series.index))
+            for col in cov.columns:
+                frame[col] = cov[col].astype(float).values
+        return frame
+
+    def build_training_dataset(self, frame, training_cutoff, known_reals=None, unknown_reals=None):
+        """TimeSeriesDataSet yang hanya memakai baris dengan time_idx <= training_cutoff.
+
+        Berbeda dengan prepare_dataset() (yang memotong 30 hari terakhir), titik
+        potong di sini ditentukan eksplisit, misalnya akhir data latih pada split
+        80/20, sehingga periode uji tidak ikut terlihat saat pelatihan.
+        """
+        if not self._is_available:
+            raise RuntimeError("pytorch-forecasting is not installed.")
+        known = ['is_wet_season'] + list(known_reals or [])
+        unknown = ['price'] + list(unknown_reals or [])
+        self.training_dataset = TimeSeriesDataSet(
+            frame[frame['time_idx'] <= training_cutoff],
+            time_idx='time_idx',
+            target='price',
+            group_ids=['group_id'],
+            max_encoder_length=self.max_encoder_length,
+            max_prediction_length=self.max_prediction_length,
+            static_categoricals=['province', 'commodity'],
+            time_varying_known_categoricals=['month', 'day_of_week'],
+            time_varying_known_reals=known,
+            time_varying_unknown_reals=unknown,
+            target_normalizer=GroupNormalizer(groups=['group_id']),
+            add_relative_time_idx=True,
+            add_target_scales=True,
+            add_encoder_length=True,
+        )
+        return self.training_dataset
+
+    def forecast_future(self, frame, dataset=None, future_covariates=None):
+        """Prakiraan max_prediction_length hari SETELAH tanggal terakhir pada `frame`.
+
+        predict() selalu memprediksi max_prediction_length baris terakhir dari data
+        yang diberikan. Karena itu baris masa depan ditambahkan lebih dulu; nilai
+        target pada baris tersebut hanya pengisi dan tidak dipakai sebagai input.
+
+        Args:
+            frame: DataFrame dari prepare_dataset() atau build_frame().
+            dataset: TimeSeriesDataSet hasil pelatihan.
+            future_covariates: DataFrame opsional ber-indeks tanggal masa depan
+                untuk kolom kovariat tambahan (nilai proyeksi ex-ante).
+
+        Returns:
+            dict: mean, lower, upper (np.ndarray) dan dates (DatetimeIndex).
+        """
+        horizon = self.max_prediction_length
+        frame = frame.sort_values('time_idx').reset_index(drop=True)
+        last = frame.iloc[-1]
+        future_dates = pd.date_range(pd.Timestamp(last['date']) + pd.Timedelta(days=1),
+                                     periods=horizon, freq='D')
+        fut = pd.DataFrame({'date': future_dates})
+        fut['price'] = float(last['price'])
+        for col in ['province', 'commodity', 'group_id']:
+            fut[col] = last[col]
+        fut['time_idx'] = np.arange(int(last['time_idx']) + 1, int(last['time_idx']) + 1 + horizon)
+        fut['month'] = fut['date'].dt.month.astype(str)
+        fut['day_of_week'] = fut['date'].dt.dayofweek.astype(str)
+        fut['is_wet_season'] = fut['date'].dt.month.isin([11, 12, 1, 2, 3, 4]).astype(float)
+        for col in [c for c in frame.columns if c not in fut.columns]:
+            if future_covariates is not None and col in future_covariates.columns:
+                fut[col] = future_covariates[col].reindex(future_dates).astype(float).values
+            else:
+                fut[col] = last[col]
+        full = pd.concat([frame, fut[frame.columns]], ignore_index=True)
+        result = self.predict(full, dataset)
+        result['dates'] = future_dates
+        return result
+
     def train(self, dataset=None, max_epochs=15, batch_size=64, learning_rate=0.001,
-              hidden_size=32, attention_head_size=2, dropout=0.1, gpus=0):
+              hidden_size=32, attention_head_size=2, dropout=0.1, gpus=0,
+              seed=42, quiet=False):
         """Train the TFT model.
         
         Args:
@@ -134,6 +233,8 @@ class TFTForecaster:
         dataset = dataset or self.training_dataset
         if dataset is None:
             raise ValueError("No dataset provided. Call prepare_dataset() first.")
+
+        pl.seed_everything(seed, workers=True)
 
         # Create dataloader
         train_dataloader = dataset.to_dataloader(
@@ -158,16 +259,26 @@ class TFTForecaster:
         )
 
         # Train
-        trainer = pl.Trainer(
-            max_epochs=max_epochs,
-            accelerator="gpu" if gpus > 0 else "cpu",
-            devices=gpus if gpus > 0 else "auto",
-            enable_model_summary=True,
-            gradient_clip_val=0.1,
-            enable_progress_bar=True,
-        )
+        import contextlib, io
+        _silence = contextlib.redirect_stdout(io.StringIO()) if quiet else contextlib.nullcontext()
+        with _silence:
+            trainer = pl.Trainer(
+                max_epochs=max_epochs,
+                accelerator="gpu" if gpus > 0 else "cpu",
+                devices=gpus if gpus > 0 else "auto",
+                enable_model_summary=not quiet,
+                gradient_clip_val=0.1,
+                enable_progress_bar=not quiet,
+                logger=not quiet,
+                enable_checkpointing=not quiet,
+            )
 
-        trainer.fit(self.model, train_dataloaders=train_dataloader)
+        if quiet:
+            import contextlib, io
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                trainer.fit(self.model, train_dataloaders=train_dataloader)
+        else:
+            trainer.fit(self.model, train_dataloaders=train_dataloader)
         logger.info("TFT training complete.")
 
     def predict(self, data, dataset=None):

@@ -32,3 +32,6 @@ recom/
 *.db
 *.db-shm
 *.db-wal
+
+# Log proses scripts/thesis_outputs.py
+thesis_run.log

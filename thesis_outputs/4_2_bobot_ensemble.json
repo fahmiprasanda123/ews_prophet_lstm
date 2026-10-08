@@ -1,0 +1,19 @@
+{
+  "weights": {
+    "Prophet": 0.0,
+    "BiLSTM": 0.95,
+    "TFT": 0.05
+  },
+  "best_score": 12.258591453661158,
+  "validation_scores": {
+    "Prophet": 26.598082539571237,
+    "BiLSTM": 12.303712259238612,
+    "TFT": 19.892838761575995
+  },
+  "best_single": "BiLSTM",
+  "n_days": 312,
+  "metric": "MAPE (%)",
+  "step": 0.05,
+  "fallback_days": 133,
+  "fallback_rate": 34.1025641025641
+}

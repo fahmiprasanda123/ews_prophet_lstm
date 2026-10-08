@@ -1,0 +1,4 @@
+Model,Interval,Cakupan aktual (%),Lebar rata-rata (% harga)
+Prophet,Interval 90% Prophet,74.61538461538461,42.457746412258466
+BiLSTM,Interval 90% MC Dropout (50 sampel),51.28205128205128,10.930244931925602
+TFT,Interval kuantil 2–98% TFT,12.82051282051282,8.6447383608134

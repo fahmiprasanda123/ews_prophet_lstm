@@ -105,6 +105,91 @@ class SmartEnsemble:
             'models_used': list(available.keys()),
         }
 
+    # ------------------------------------------------------------------ #
+    # Pembobotan berbasis validasi (dipakai protokol evaluasi tesis)
+    # ------------------------------------------------------------------ #
+    def fit_weights_grid(self, val_predictions: dict, val_actual, step: float = 0.05,
+                         metric: str = 'MAPE (%)') -> dict:
+        """Cari bobot terbaik dengan pencarian grid pada periode validasi.
+
+        Semua kombinasi bobot non-negatif berkelipatan `step` yang berjumlah 1
+        dicoba; kombinasi dengan nilai `metric` terkecil dipilih. Bobot hasil
+        pencarian disimpan di self.weights sehingga combine_forecasts() dan
+        combine_series() langsung memakainya.
+
+        Args:
+            val_predictions: dict nama_model -> pd.Series prediksi (indeks tanggal).
+            val_actual: pd.Series harga aktual (indeks tanggal).
+            step: Resolusi grid (0,05 = kelipatan 5%).
+            metric: Metrik galat yang diminimalkan (kunci dari calculate_metrics).
+
+        Returns:
+            dict: weights, best_score, validation_scores, best_single, n_days.
+        """
+        from itertools import product
+        from models.evaluation import calculate_metrics
+
+        names = [m for m, s in val_predictions.items() if s is not None and len(s) > 0]
+        if not names:
+            raise ValueError("Tidak ada prediksi validasi untuk mencari bobot.")
+        frame = pd.concat({m: val_predictions[m] for m in names}, axis=1).dropna()
+        actual = val_actual.reindex(frame.index)
+        keep = actual.notna()
+        frame, actual = frame[keep], actual[keep]
+
+        scores = {m: calculate_metrics(actual.values, frame[m].values, m)[metric] for m in names}
+        n_steps = int(round(1 / step))
+        best_score, best_w = np.inf, None
+        for combo in product(range(n_steps + 1), repeat=len(names)):
+            if sum(combo) != n_steps:
+                continue
+            w = np.array(combo, dtype=float) / n_steps
+            score = calculate_metrics(actual.values, frame.values @ w)[metric]
+            if score < best_score - 1e-12:
+                best_score, best_w = score, w
+
+        self.weights = {m: float(w) for m, w in zip(names, best_w)}
+        self.validation_scores = scores
+        self.best_single = min(scores, key=scores.get)
+        return {
+            'weights': dict(self.weights),
+            'best_score': float(best_score),
+            'validation_scores': {m: float(v) for m, v in scores.items()},
+            'best_single': self.best_single,
+            'n_days': int(len(frame)),
+            'metric': metric,
+            'step': step,
+        }
+
+    def combine_series(self, predictions: dict, fallback_cv: float = 0.15):
+        """Gabungkan prediksi beberapa model per TANGGAL memakai self.weights.
+
+        Fallback: bila koefisien variasi antarprediksi model pada suatu tanggal
+        melebihi `fallback_cv`, ensemble memakai prediksi model dengan skor
+        validasi terbaik (self.best_single) untuk tanggal tersebut.
+
+        Args:
+            predictions: dict nama_model -> pd.Series (indeks tanggal).
+            fallback_cv: Ambang koefisien variasi; None untuk mematikan fallback.
+
+        Returns:
+            (pd.Series ensemble, pd.Series bool penanda fallback)
+        """
+        names = [m for m in self.weights if m in predictions and predictions[m] is not None]
+        if not names:
+            raise ValueError("Tidak ada model yang cocok dengan bobot ensemble.")
+        frame = pd.concat({m: predictions[m] for m in names}, axis=1).dropna()
+        w = np.array([self.weights[m] for m in names], dtype=float)
+        w = w / w.sum() if w.sum() > 0 else np.full(len(names), 1 / len(names))
+        ensemble = pd.Series(frame.values @ w, index=frame.index, name='Smart Ensemble')
+        flag = pd.Series(False, index=frame.index, name='fallback')
+        best = getattr(self, 'best_single', None)
+        if fallback_cv is not None and len(names) > 1 and best in frame.columns:
+            cv = frame.std(axis=1, ddof=0) / frame.mean(axis=1).abs()
+            flag = (cv > fallback_cv).rename('fallback')
+            ensemble[flag] = frame.loc[flag, best]
+        return ensemble, flag
+
     def update_weights_from_errors(self, model_errors: dict):
         """Update model weights based on recent prediction errors.
         

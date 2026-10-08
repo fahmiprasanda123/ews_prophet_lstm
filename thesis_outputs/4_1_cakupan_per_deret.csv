@@ -1,0 +1,335 @@
+province,commodity,n_records,start,end,n_days,n_missing_days,n_ffilled,n_interpolated,max_gap_days
+Aceh,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Aceh,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Aceh,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Aceh,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Aceh,Cabai Rawit,1916,2021-01-04,2026-04-03,1916,0,0,0,0
+Aceh,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Aceh,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Aceh,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Aceh,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Aceh,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bali,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Banten,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Bengkulu,Bawang Merah,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Bengkulu,Bawang Putih,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Bengkulu,Beras,1938,2021-01-04,2026-05-06,1949,11,11,0,2
+Bengkulu,Cabai Merah,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Bengkulu,Cabai Rawit,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Bengkulu,Daging Ayam,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Bengkulu,Daging Sapi,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Bengkulu,Gula Pasir,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Bengkulu,Minyak Goreng,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Bengkulu,Telur Ayam,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DI Yogyakarta,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DI Yogyakarta,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DI Yogyakarta,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+DI Yogyakarta,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DI Yogyakarta,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DI Yogyakarta,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DI Yogyakarta,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DI Yogyakarta,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DI Yogyakarta,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DI Yogyakarta,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+DKI Jakarta,Bawang Merah,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Bawang Putih,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Beras,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Cabai Merah,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Cabai Rawit,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Daging Ayam,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Daging Sapi,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Gula Pasir,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Minyak Goreng,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+DKI Jakarta,Telur Ayam,1939,2021-01-04,2026-05-07,1950,11,11,0,2
+Gorontalo,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Gorontalo,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Gorontalo,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Gorontalo,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Gorontalo,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Gorontalo,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Gorontalo,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Gorontalo,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Gorontalo,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jambi,Bawang Merah,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Bawang Putih,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Cabai Merah,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Cabai Rawit,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Daging Ayam,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Daging Sapi,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Gula Pasir,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Minyak Goreng,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jambi,Telur Ayam,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Jawa Barat,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Barat,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Tengah,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Jawa Timur,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Barat,Bawang Merah,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Bawang Putih,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Beras,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Cabai Merah,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Cabai Rawit,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Daging Ayam,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Daging Sapi,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Gula Pasir,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Minyak Goreng,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Barat,Telur Ayam,1938,2021-01-04,2026-05-07,1950,12,12,0,2
+Kalimantan Selatan,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Selatan,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Selatan,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kalimantan Selatan,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Selatan,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Selatan,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Selatan,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Selatan,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Selatan,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Selatan,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kalimantan Tengah,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Tengah,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Timur,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kalimantan Utara,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kepulauan Bangka Belitung,Bawang Merah,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Bangka Belitung,Bawang Putih,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Bangka Belitung,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Bangka Belitung,Cabai Merah,1916,2021-01-04,2026-04-03,1916,0,0,0,0
+Kepulauan Bangka Belitung,Cabai Rawit,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Bangka Belitung,Daging Ayam,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Bangka Belitung,Daging Sapi,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Bangka Belitung,Gula Pasir,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Bangka Belitung,Telur Ayam,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Riau,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kepulauan Riau,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kepulauan Riau,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Kepulauan Riau,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kepulauan Riau,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kepulauan Riau,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kepulauan Riau,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kepulauan Riau,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Kepulauan Riau,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Lampung,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Lampung,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku,Bawang Merah,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Maluku,Bawang Putih,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Maluku,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Maluku,Cabai Merah,1916,2021-01-04,2026-04-03,1916,0,0,0,0
+Maluku,Cabai Rawit,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Maluku,Daging Ayam,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Maluku,Daging Sapi,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Maluku,Gula Pasir,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Maluku,Minyak Goreng,1916,2021-01-04,2026-04-03,1916,0,0,0,0
+Maluku,Telur Ayam,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Maluku Utara,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Maluku Utara,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Nusa Tenggara Barat,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Barat,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Nusa Tenggara Timur,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Nusa Tenggara Timur,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua Barat,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua Barat,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua Barat,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Papua Barat,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua Barat,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua Barat,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua Barat,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua Barat,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Papua Barat,Minyak Goreng,1916,2021-01-04,2026-04-03,1916,0,0,0,0
+Papua Barat,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Riau,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Riau,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sulawesi Barat,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Barat,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Selatan,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tengah,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Tenggara,Bawang Merah,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Bawang Putih,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Beras,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Cabai Merah,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Cabai Rawit,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Daging Ayam,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Daging Sapi,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Gula Pasir,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Minyak Goreng,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Tenggara,Telur Ayam,1938,2021-01-04,2026-05-06,1949,11,11,0,3
+Sulawesi Utara,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Utara,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Utara,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sulawesi Utara,Cabai Merah,1916,2021-01-04,2026-04-03,1916,0,0,0,0
+Sulawesi Utara,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Utara,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Utara,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Utara,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Utara,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sulawesi Utara,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Barat,Bawang Merah,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Barat,Bawang Putih,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Barat,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Barat,Daging Ayam,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Barat,Daging Sapi,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Barat,Gula Pasir,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Barat,Minyak Goreng,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Barat,Telur Ayam,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Selatan,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Selatan,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Selatan,Beras,1939,2021-01-04,2026-05-06,1949,10,10,0,2
+Sumatera Selatan,Cabai Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Selatan,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Selatan,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Selatan,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Selatan,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Selatan,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Selatan,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Bawang Merah,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Bawang Putih,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Beras,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Cabai Rawit,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Daging Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Daging Sapi,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Gula Pasir,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Minyak Goreng,1940,2021-01-04,2026-05-07,1950,10,10,0,2
+Sumatera Utara,Telur Ayam,1940,2021-01-04,2026-05-07,1950,10,10,0,2
