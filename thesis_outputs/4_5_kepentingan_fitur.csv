@@ -1,0 +1,16 @@
+Fitur,Kelompok,|r|
+Lag 1 hari,Autolag harga,0.9974356003046463
+Lag 7 hari,Autolag harga,0.9474038007544057
+Lag 14 hari,Autolag harga,0.8478714686246748
+Lag 30 hari,Autolag harga,0.6174222363510314
+Korelasi dengan Telur Ayam,Lintas komoditas,0.4746599094310199
+Korelasi dengan Daging Sapi,Lintas komoditas,0.4409869775792002
+Korelasi dengan Gula Pasir,Lintas komoditas,0.41522061468297583
+Korelasi dengan Beras,Lintas komoditas,0.3547268069629351
+Korelasi dengan Cabai Merah,Lintas komoditas,0.34066041886792586
+Korelasi dengan Minyak Goreng,Lintas komoditas,0.30759607956873514
+Korelasi dengan Daging Ayam,Lintas komoditas,0.23922990063846122
+Korelasi dengan Cabai Rawit,Lintas komoditas,0.21832274971094093
+Korelasi dengan Bawang Putih,Lintas komoditas,0.18881083292864337
+Bulan,Temporal,0.1577974631516089
+Hari dalam seminggu,Temporal,0.0058834450648021135

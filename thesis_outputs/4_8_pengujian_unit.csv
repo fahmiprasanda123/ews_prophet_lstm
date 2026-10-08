@@ -1,0 +1,18 @@
+Modul uji,Lulus,Gagal,Dilewati
+test_api,16,0,0
+test_backtester,4,0,0
+test_database,15,0,0
+test_ensemble,9,0,0
+test_evaluation,20,0,0
+test_ews_engine,5,0,0
+test_ews_engine_v2,7,0,0
+test_lstm_forecast,6,0,0
+test_pihps_harmonizer,2,0,0
+test_pihps_scraper,8,0,0
+test_price_narrative,13,0,0
+test_prophet_forecast,4,0,0
+test_scheduler,4,0,0
+test_supply_risk,8,0,0
+test_tft_forecast,4,0,1
+test_theme,7,0,0
+test_weather_client,16,0,0

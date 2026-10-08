@@ -1,0 +1,15 @@
+,Nilai
+Jumlah catatan,647709
+Tanggal awal,2021-01-04
+Tanggal akhir,2026-05-07
+Jumlah komoditas,10
+Jumlah provinsi,34
+Catatan duplikat (tanggal-provinsi-komoditas),0
+Harga kosong,0
+Harga nol/negatif,0
+Jumlah deret (komoditas × provinsi),334
+Total hari kalender seluruh deret,651039
+Hari tanpa catatan,3330
+Diisi forward-fill (≤ 7 hari),3330
+Diinterpolasi linear (celah > 7 hari),0
+Celah terpanjang (hari),3

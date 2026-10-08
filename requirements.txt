@@ -14,6 +14,7 @@ statsmodels>=0.14.0
 # v2.0 — API
 fastapi>=0.100.0
 uvicorn>=0.20.0
+httpx  # dibutuhkan TestClient pada tests/test_api.py
 pydantic>=2.0.0
 
 # v2.0 — Reports
