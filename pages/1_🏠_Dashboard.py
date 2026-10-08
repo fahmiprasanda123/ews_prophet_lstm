@@ -38,11 +38,11 @@ if 'model_params' not in st.session_state:
         'changepoint_prior_scale': 0.05,
         'yearly_seasonality': True,
         'weekly_seasonality': True,
-        'epochs': 10,
+        'epochs': 50,
         'hidden_size': 128,
         'seq_length': 30,
-        'tft_max_epochs': 2,
-        'tft_batch_size': 32
+        'tft_max_epochs': 15,
+        'tft_batch_size': 64
     }
 
 # --- Load Data ---
@@ -95,12 +95,12 @@ with st.sidebar.expander("🔮 Prophet Config", expanded=False):
     p_weekly = st.checkbox("Weekly Seasonality", st.session_state.model_params['weekly_seasonality'])
 
 with st.sidebar.expander("🧠 BiLSTM Config", expanded=False):
-    l_epochs = st.number_input("Epochs", 5, 100, st.session_state.model_params['epochs'])
+    l_epochs = st.number_input("Epoch maksimum (early stopping)", 5, 200, st.session_state.model_params['epochs'])
     l_hidden = st.selectbox("Hidden Size", [32, 64, 128, 256], index=[32, 64, 128, 256].index(st.session_state.model_params['hidden_size']))
     l_seq = st.slider("Sequence Length", 7, 60, st.session_state.model_params['seq_length'])
 
 with st.sidebar.expander("⚡ TFT Config", expanded=False):
-    t_epochs = st.number_input("Max Epochs", 1, 10, st.session_state.model_params['tft_max_epochs'])
+    t_epochs = st.number_input("Max Epochs", 1, 50, st.session_state.model_params['tft_max_epochs'])
     t_batch = st.selectbox("Batch Size", [16, 32, 64], index=[16, 32, 64].index(st.session_state.model_params['tft_batch_size']))
 
 # Update session state
@@ -119,168 +119,108 @@ st.session_state.model_params = {
 st.sidebar.markdown("---")
 
 # --- AI Forecast ---
+MODELS_FOR = {
+    "Prophet Only": ['prophet'],
+    "BiLSTM Only": ['bilstm'],
+    "TFT": ['tft'],
+    "Hybrid": ['prophet', 'bilstm', 'ensemble'],
+    "Smart Ensemble": ['prophet', 'bilstm', 'tft', 'ensemble'],
+}
+EVAL_NAME = {"Prophet Only": "Prophet", "BiLSTM Only": "BiLSTM", "TFT": "TFT",
+             "Hybrid": "Smart Ensemble", "Smart Ensemble": "Smart Ensemble"}
+WEIGHT_KEY = {'Prophet': 'prophet', 'BiLSTM': 'lstm', 'TFT': 'tft'}
+
+
+def _protocol_config(params):
+    return {
+        'prophet': {'changepoint_prior_scale': float(params['changepoint_prior_scale']),
+                    'yearly_seasonality': bool(params['yearly_seasonality']),
+                    'weekly_seasonality': bool(params['weekly_seasonality'])},
+        'lstm': {'epochs': int(params['epochs']), 'hidden_size': int(params['hidden_size']),
+                 'seq_length': int(params['seq_length'])},
+        'tft': {'max_epochs': int(params['tft_max_epochs']), 'batch_size': int(params['tft_batch_size'])},
+    }
+
+
+@st.cache_resource(show_spinner=False)
+def get_model_evaluation(_df, province, commodity, model_type, params):
+    """Metrik dan bobot ensemble dari protokol evaluasi yang sama dengan Model Laboratory/skrip tesis."""
+    from models.evaluation_protocol import evaluate_series
+    return evaluate_series(_df, province, commodity, config=_protocol_config(params),
+                           models=MODELS_FOR[model_type])
+
+
 @st.cache_resource(show_spinner=False)
 def get_ai_forecast(_df, province, commodity, target_date, model_type, params):
     try:
-        from models.evaluation import calculate_metrics
-        from prophet import Prophet
-        import torch
+        from models.ensemble import SmartEnsemble
+        from models.lstm_forecast import LSTMForecaster
 
-        # Initialize results
-        metrics = None
-        p_forecast = None
-        predicted_price = None
-        pred_lower = None
-        pred_upper = None
-        ensemble_info = None
-
-        # 1. Base Prophet (Always needed for the long-term trend chart)
-        p_forecaster = FoodPriceProphet(_df)
-        p_forecast = p_forecaster.train_and_forecast(province, commodity, periods=120)
-        
+        series = _df[(_df['province'] == province) & (_df['commodity'] == commodity)].sort_values('date')
         target_dt = pd.to_datetime(target_date)
+        last_date = pd.to_datetime(series['date'].max())
+        days_ahead = max(1, (target_dt.normalize() - last_date.normalize()).days)
+        notes = []
+
+        # 1. Prophet (selalu, untuk grafik tren jangka panjang)
+        p_forecaster = FoodPriceProphet(_df)
+        p_forecast = p_forecaster.train_and_forecast(province, commodity, periods=max(120, days_ahead))
         p_row = p_forecast[p_forecast['ds'].dt.date == target_dt.date()]
-        p_pred = p_row['yhat'].iloc[0] if not p_row.empty else p_forecast['yhat'].iloc[-1]
-        p_lower = p_row['yhat_lower'].iloc[0] if not p_row.empty else p_forecast['yhat_lower'].iloc[-1]
-        p_upper = p_row['yhat_upper'].iloc[0] if not p_row.empty else p_forecast['yhat_upper'].iloc[-1]
+        p_row = p_row if not p_row.empty else p_forecast.tail(1)
+        future_preds = {}
+        if 'prophet' in MODELS_FOR[model_type]:
+            future_preds['prophet'] = {'mean': float(p_row['yhat'].iloc[0]),
+                                       'lower': float(p_row['yhat_lower'].iloc[0]),
+                                       'upper': float(p_row['yhat_upper'].iloc[0])}
 
-        # 2. Handle Evaluation & Prediction based on model_type
-        if model_type == "Prophet Only":
-            # Eval Prophet
-            p_df = p_forecaster.prepare_data(province, commodity)
-            tr, te = p_forecaster.split_data(p_df, test_size=0.2)
-            m = Prophet(
-                yearly_seasonality=params['yearly_seasonality'], 
-                weekly_seasonality=params['weekly_seasonality'], 
-                changepoint_prior_scale=params['changepoint_prior_scale']
-            )
-            m.fit(tr)
-            f = m.predict(te[['ds']])
-            metrics = calculate_metrics(te['y'].values, f['yhat'].values, "Prophet")
-            predicted_price, pred_lower, pred_upper = p_pred, p_lower, p_upper
+        # 2. BiLSTM: prakiraan rekursif sampai tanggal target + interval MC Dropout
+        if 'bilstm' in MODELS_FOR[model_type]:
+            lf = LSTMForecaster(seq_length=params['seq_length'], hidden_size=params['hidden_size'])
+            X_all, y_all = lf.prepare_data(_df, province, commodity)
+            lf.train_single_series(X_all, y_all, epochs=params['epochs'])
+            last_seq = series['price'].values[-params['seq_length']:]
+            point = lf.predict_multi_step(last_seq, steps=days_ahead)
+            mc = lf.predict_with_uncertainty(last_seq, steps=days_ahead, n_samples=50)
+            future_preds['lstm'] = {'mean': float(point[-1]), 'lower': float(mc['lower'][-1]),
+                                    'upper': float(mc['upper'][-1])}
 
-        elif model_type == "BiLSTM Only":
-            # Eval LSTM
-            l_forecaster = LSTMForecaster(seq_length=params['seq_length'], hidden_size=params['hidden_size'])
-            X, y = l_forecaster.prepare_data(_df, province, commodity)
-            Xtr, Xte, ytr, yte = l_forecaster.split_data(X, y, test_size=0.2)
-            l_forecaster.train_single_series(Xtr, ytr, epochs=params['epochs'])
-            
-            l_forecaster.model.eval()
-            with torch.no_grad():
-                yp = l_forecaster.model(Xte)
-                y_pred = l_forecaster.scaler.inverse_transform(yp.numpy().reshape(-1, 1)).flatten()
-                y_true = l_forecaster.scaler.inverse_transform(yte.numpy().reshape(-1, 1)).flatten()
-                metrics = calculate_metrics(y_true, y_pred, "BiLSTM")
-                
-            # Forecast
-            last_seq = _df[(_df['province'] == province) & (_df['commodity'] == commodity)]['price'].values[-params['seq_length']:]
-            predicted_price = float(l_forecaster.predict(last_seq)[0][0])
-            pred_lower, pred_upper = predicted_price * 0.95, predicted_price * 1.05
-
-        elif model_type == "TFT":
+        # 3. TFT: prakiraan ke DEPAN (bukan 30 hari terakhir data)
+        if 'tft' in MODELS_FOR[model_type]:
             tft_model = get_tft_forecaster()
             if tft_model.is_available:
-                dataset, data = tft_model.prepare_dataset(_df, province, commodity)
+                dataset, data = tft_model.prepare_dataset(_df, province, commodity, use_all_data=True)
                 if dataset is not None:
-                    tft_model.train(dataset, max_epochs=params['tft_max_epochs'], batch_size=params['tft_batch_size'])
-                    tft_res = tft_model.predict(data, dataset)
-                    # For simplicity in dashboard, metrics are from latest train
-                    predicted_price = float(tft_res['mean'][0])
-                    pred_lower = float(tft_res['lower'][0])
-                    pred_upper = float(tft_res['upper'][0])
-                    metrics = {'Model': 'TFT', 'MAPE (%)': 8.5, 'RMSE': 120, 'MAE': 95} # Placeholder as TFT metrics are internal
+                    tft_model.train(dataset, max_epochs=params['tft_max_epochs'],
+                                    batch_size=params['tft_batch_size'], quiet=True)
+                    fut = tft_model.forecast_future(data, dataset)
+                    idx = min(days_ahead, len(fut['mean'])) - 1
+                    if days_ahead > len(fut['mean']):
+                        notes.append(f"TFT hanya memprakirakan {len(fut['mean'])} hari; dipakai nilai hari terakhirnya.")
+                    future_preds['tft'] = {'mean': float(fut['mean'][idx]), 'lower': float(fut['lower'][idx]),
+                                           'upper': float(fut['upper'][idx])}
             else:
-                st.warning("TFT not available.")
-                model_type = "Hybrid" # Fallback
-                
-        if model_type in ["Hybrid", "Smart Ensemble"]:
-            # --- EVALUATION METRICS CALCULATION ---
-            # 1. Prophet Eval
-            p_df = p_forecaster.prepare_data(province, commodity)
-            tr, te = p_forecaster.split_data(p_df, test_size=0.2)
-            m = Prophet(yearly_seasonality=params['yearly_seasonality'], weekly_seasonality=params['weekly_seasonality'], changepoint_prior_scale=params['changepoint_prior_scale'])
-            m.fit(tr)
-            f = m.predict(te[['ds']])
-            p_test_pred = f['yhat'].values
-            actual = te['y'].values
-            
-            # 2. LSTM Eval & Predict
-            l_forecaster = LSTMForecaster(seq_length=params['seq_length'], hidden_size=params['hidden_size'])
-            X, y = l_forecaster.prepare_data(_df, province, commodity)
-            Xtr, Xte, ytr, yte = l_forecaster.split_data(X, y, test_size=0.2)
-            
-            # Train for eval
-            l_forecaster.train_single_series(Xtr, ytr, epochs=params['epochs'])
-            l_forecaster.model.eval()
-            with torch.no_grad():
-                yp = l_forecaster.model(Xte)
-                l_test_pred = l_forecaster.scaler.inverse_transform(yp.numpy().reshape(-1, 1)).flatten()
-            
-            if len(l_test_pred) < len(p_test_pred):
-                l_test_pred = np.pad(l_test_pred, (0, len(p_test_pred) - len(l_test_pred)), 'edge')
-            elif len(l_test_pred) > len(p_test_pred):
-                l_test_pred = l_test_pred[:len(p_test_pred)]
-                
-            # Re-train for future prediction to use recent data
-            l_forecaster_future = LSTMForecaster(seq_length=params['seq_length'], hidden_size=params['hidden_size'])
-            X_all, y_all = l_forecaster_future.prepare_data(_df, province, commodity)
-            l_forecaster_future.train_single_series(X_all[-200:], y_all[-200:], epochs=params['epochs'])
-            last_seq = _df[(_df['province'] == province) & (_df['commodity'] == commodity)]['price'].values[-params['seq_length']:]
-            l_pred = l_forecaster_future.predict(last_seq)[0][0]
-            
-            # 3. TFT Eval & Predict
-            tft_test_pred = None
-            tft_pred, tft_lower, tft_upper = None, None, None
-            if model_type == "Smart Ensemble":
-                tft_model = get_tft_forecaster()
-                if tft_model.is_available:
-                    try:
-                        dataset, data = tft_model.prepare_dataset(_df, province, commodity)
-                        if dataset is not None:
-                            tft_model.train(dataset, max_epochs=params['tft_max_epochs'], batch_size=params['tft_batch_size'])
-                            tft_res = tft_model.predict(data, dataset)
-                            if tft_res is not None:
-                                tft_test_pred = tft_res['mean'][:len(p_test_pred)]
-                                if len(tft_test_pred) < len(p_test_pred):
-                                    tft_test_pred = np.pad(tft_test_pred, (0, len(p_test_pred) - len(tft_test_pred)), 'edge')
-                                tft_pred = float(tft_res['mean'][0])
-                                tft_lower = float(tft_res['lower'][0])
-                                tft_upper = float(tft_res['upper'][0])
-                    except Exception: pass
-                    
-            # Calculate Combined Metrics
-            if model_type == "Smart Ensemble":
-                ensemble = SmartEnsemble()
-                p_dict_test = {'prophet': {'mean': p_test_pred}, 'lstm': {'mean': l_test_pred}}
-                if tft_test_pred is not None:
-                    p_dict_test['tft'] = {'mean': tft_test_pred}
-                res_test = ensemble.combine_forecasts(p_dict_test)
-                metrics = calculate_metrics(actual, res_test['mean'], "Smart Ensemble")
-            else: # Hybrid
-                hybrid_test_pred = (p_test_pred * 0.6) + (l_test_pred * 0.4)
-                metrics = calculate_metrics(actual, hybrid_test_pred, "Hybrid")
+                notes.append("TFT tidak tersedia (pytorch-forecasting belum terpasang).")
 
-            days_ahead = (target_dt.date() - _df['date'].max().date()).days
-            
-            if model_type == "Smart Ensemble":
-                ensemble = SmartEnsemble()
-                p_dict = {
-                    'prophet': {'mean': np.array([p_pred]), 'lower': np.array([p_lower]), 'upper': np.array([p_upper])},
-                    'lstm': {'mean': np.array([l_pred]), 'lower': np.array([l_pred*0.95]), 'upper': np.array([l_pred*1.05])}
-                }
-                if tft_pred is not None:
-                    p_dict['tft'] = {'mean': np.array([tft_pred]), 'lower': np.array([tft_lower]), 'upper': np.array([tft_upper])}
-                
-                res = ensemble.get_forecast_with_distance_weighting(p_dict, days_ahead)
-                predicted_price = float(res['mean'][0])
-                pred_lower, pred_upper = float(res['lower'][0]), float(res['upper'][0])
-                ensemble_info = {'weights': res['model_weights'], 'models_used': res['models_used']}
-            else: # Hybrid
-                w_l = max(0.05, 0.4 - (days_ahead * 0.003))
-                predicted_price = (p_pred * (1-w_l)) + (l_pred * w_l)
-                pred_lower = (p_lower * (1-w_l)) + (l_pred * 0.95 * w_l)
-                pred_upper = (p_upper * (1-w_l)) + (l_pred * 1.05 * w_l)
+        # 4. Metrik dan bobot dari protokol evaluasi (di-cache per kombinasi)
+        evaluation = get_model_evaluation(_df, province, commodity, model_type, params)
+        mrow = evaluation['metrics'][evaluation['metrics']['Model'] == EVAL_NAME[model_type]]
+        metrics = mrow.iloc[0].to_dict() if len(mrow) else None
+
+        ensemble_info = None
+        if model_type in ("Smart Ensemble", "Hybrid") and evaluation.get('ensemble'):
+            weights = {WEIGHT_KEY[k]: v for k, v in evaluation['ensemble']['weights'].items()}
+            ens = SmartEnsemble(default_weights=weights)
+            res = ens.combine_forecasts({k: v for k, v in future_preds.items() if k in weights})
+            predicted_price = float(np.atleast_1d(res['mean'])[0])
+            pred_lower = float(np.atleast_1d(res['lower'])[0])
+            pred_upper = float(np.atleast_1d(res['upper'])[0])
+            ensemble_info = {'weights': res['model_weights'], 'models_used': res['models_used'], 'notes': notes}
+        else:
+            key = {'Prophet Only': 'prophet', 'BiLSTM Only': 'lstm', 'TFT': 'tft'}.get(model_type)
+            if key not in future_preds:
+                return None, None, None, p_forecast, metrics, None
+            single = future_preds[key]
+            predicted_price, pred_lower, pred_upper = single['mean'], single['lower'], single['upper']
 
         return float(predicted_price), float(pred_lower), float(pred_upper), p_forecast, metrics, ensemble_info
 
@@ -620,15 +560,9 @@ with tab4:
         mc6.metric("🎯 Directional Acc.", f"{metrics.get('Directional Accuracy (%)', 0):.1f}%")
 
         mape = metrics['MAPE (%)']
-        if mape < 5:
-            grade = "🏆 Exceptional (< 5%)"
-        elif mape < 10:
-            grade = "✅ Highly Accurate (< 10%)"
-        elif mape < 20:
-            grade = "👍 Good (< 20%)"
-        else:
-            grade = "⚠️ Needs Improvement (> 20%)"
-        st.success(f"**Grade: {grade}** — MAPE {mape:.2f}%")
+        st.success(f"**Kategori (Lewis, 1982): {metrics.get('Kategori MAPE', '-')}** — MAPE {mape:.2f}%")
+        st.caption("Metrik dihitung dengan protokol rolling-origin (split 80/20, horizon 30 hari) yang sama "
+                   "dengan Model Laboratory. Directional Accuracy relatif terhadap harga di titik asal.")
     else:
         st.info("⚠️ Metrik belum tersedia.")
 

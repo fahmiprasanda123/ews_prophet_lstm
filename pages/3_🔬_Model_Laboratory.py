@@ -25,11 +25,11 @@ if 'model_params' not in st.session_state:
         'changepoint_prior_scale': 0.05,
         'yearly_seasonality': True,
         'weekly_seasonality': True,
-        'epochs': 10,
+        'epochs': 50,
         'hidden_size': 128,
         'seq_length': 30,
-        'tft_max_epochs': 2,
-        'tft_batch_size': 32
+        'tft_max_epochs': 15,
+        'tft_batch_size': 64
     }
 
 @st.cache_data
@@ -64,12 +64,12 @@ with st.sidebar.expander("🔮 Prophet Config", expanded=False):
     p_weekly = st.checkbox("Weekly Seasonality", st.session_state.model_params['weekly_seasonality'])
 
 with st.sidebar.expander("🧠 LSTM Config", expanded=False):
-    l_epochs = st.number_input("Epochs", 5, 100, st.session_state.model_params['epochs'])
+    l_epochs = st.number_input("Epoch maksimum (early stopping)", 5, 200, st.session_state.model_params['epochs'])
     l_hidden = st.selectbox("Hidden Size", [32, 64, 128, 256], index=[32, 64, 128, 256].index(st.session_state.model_params['hidden_size']))
     l_seq = st.slider("Sequence Length", 7, 60, st.session_state.model_params['seq_length'])
 
 with st.sidebar.expander("⚡ TFT Config", expanded=False):
-    t_epochs = st.number_input("Max Epochs", 1, 10, st.session_state.model_params['tft_max_epochs'])
+    t_epochs = st.number_input("Max Epochs", 1, 50, st.session_state.model_params['tft_max_epochs'])
     t_batch = st.selectbox("Batch Size", [16, 32, 64], index=[16, 32, 64].index(st.session_state.model_params['tft_batch_size']))
 
 # Update session state
@@ -93,260 +93,108 @@ tab1, tab2, tab3 = st.tabs(["📊 Model Comparison", "🔄 Backtesting", "📈 V
 
 # --- Tab 1: Model Comparison ---
 with tab1:
-    st.markdown(f"**{lab_commodity}** di **{lab_province}** — 80/20 Time-Series Split")
+    st.markdown(f"**{lab_commodity}** di **{lab_province}** — split 80/20 + rolling-origin (horizon 30 hari)")
+    st.caption(
+        "Protokol sama dengan skrip tesis (scripts/thesis_outputs.py): setiap model hanya memakai data "
+        "sebelum titik asal, semua prediksi disejajarkan per tanggal, dan bobot Smart Ensemble dicari "
+        "dengan grid search pada periode validasi (20% terakhir data latih)."
+    )
+    use_cov = st.checkbox("Gunakan kovariat iklim nyata (Open-Meteo & NOAA)", value=True, key="lab_cov")
 
     if st.button("🚀 Jalankan Perbandingan Model", key="run_compare"):
-        from models.evaluation import calculate_metrics, compare_models
+        from models.evaluation_protocol import evaluate_series, load_climate_covariates, prepare_series
 
-        all_metrics = []
-        predictions = {}
-
-        st.info(f"⚙️ Running with: Prophet(cps={model_params['changepoint_prior_scale']}), LSTM(epochs={model_params['epochs']}, seq={model_params['seq_length']})")
-
-        # === CONVENTIONAL BASELINES ===
-        from models.conventional_forecast import ConventionalForecaster
-        conv = ConventionalForecaster(df)
-
-        # Naïve Seasonal
-        with st.spinner("Running Naïve Seasonal..."):
+        lab_config = {
+            'prophet': {'changepoint_prior_scale': float(model_params['changepoint_prior_scale']),
+                        'yearly_seasonality': bool(model_params['yearly_seasonality']),
+                        'weekly_seasonality': bool(model_params['weekly_seasonality'])},
+            'lstm': {'epochs': int(model_params['epochs']), 'hidden_size': int(model_params['hidden_size']),
+                     'seq_length': int(model_params['seq_length'])},
+            'tft': {'max_epochs': int(model_params['tft_max_epochs']),
+                    'batch_size': int(model_params['tft_batch_size'])},
+        }
+        cov_raw = None
+        if use_cov:
             try:
-                naive_res = conv.naive_seasonal_forecast(lab_province, lab_commodity, test_size=0.2)
-                if naive_res is not None:
-                    metrics = calculate_metrics(naive_res['y_true'], naive_res['y_pred'], "Naïve Seasonal")
-                    all_metrics.append(metrics)
-                    predictions['Naïve Seasonal'] = {
-                        'dates': naive_res['dates'],
-                        'pred': naive_res['y_pred'],
-                        'actual': naive_res['y_true'],
-                    }
+                y_tmp, _ = prepare_series(df, lab_province, lab_commodity)
+                with st.spinner("Mengambil kovariat iklim (Open-Meteo & NOAA)..."):
+                    cov_raw = load_climate_covariates(lab_province, y_tmp.index.min(), y_tmp.index.max(),
+                                                      strict=True)
             except Exception as e:
-                st.warning(f"Naïve Seasonal error: {e}")
+                st.warning(f"Kovariat iklim nyata tidak tersedia ({e}). Perbandingan dijalankan TANPA kovariat.")
+        bar = st.progress(0.0, text="Menyiapkan data...")
+        st.session_state['lab_result'] = evaluate_series(
+            df, lab_province, lab_commodity, config=lab_config, covariates_raw=cov_raw,
+            progress=lambda msg, frac: bar.progress(min(max(float(frac), 0.0), 1.0), text=msg),
+        )
 
-        # Moving Average (SMA-30)
-        with st.spinner("Running Moving Average (SMA-30)..."):
-            try:
-                sma_res = conv.moving_average_forecast(lab_province, lab_commodity, test_size=0.2, window=30)
-                if sma_res is not None:
-                    metrics = calculate_metrics(sma_res['y_true'], sma_res['y_pred'], "SMA-30")
-                    all_metrics.append(metrics)
-                    predictions['SMA-30'] = {
-                        'dates': sma_res['dates'],
-                        'pred': sma_res['y_pred'],
-                        'actual': sma_res['y_true'],
-                    }
-            except Exception as e:
-                st.warning(f"SMA-30 error: {e}")
+    result = st.session_state.get('lab_result')
+    if result is not None and (result['province'], result['commodity']) == (lab_province, lab_commodity):
+        from models.evaluation_protocol import predictions_frame
 
-        # ARIMA
-        with st.spinner("Training ARIMA(5,1,0)..."):
-            try:
-                arima_res = conv.arima_forecast(lab_province, lab_commodity, test_size=0.2, order=(5, 1, 0))
-                if arima_res is not None:
-                    metrics = calculate_metrics(arima_res['y_true'], arima_res['y_pred'], "ARIMA(5,1,0)")
-                    all_metrics.append(metrics)
-                    predictions['ARIMA(5,1,0)'] = {
-                        'dates': arima_res['dates'],
-                        'pred': arima_res['y_pred'],
-                        'actual': arima_res['y_true'],
-                    }
-            except Exception as e:
-                st.warning(f"ARIMA error: {e}")
+        sp = result['split']
+        st.info(
+            f"Latih {sp['n_train']} hari (s.d. {sp['train_end']}) · Uji {sp['n_test']} hari "
+            f"({sp['test_start']} s.d. {sp['test_end']}) · {sp['n_windows_test']} titik asal · "
+            f"Kovariat iklim: {'ya' if result['covariates_used'] else 'tidak'}"
+        )
+        for note in result['notes']:
+            st.warning(note)
 
-        # Prophet
-        with st.spinner("Training Prophet..."):
-            try:
-                from models.prophet_forecast import FoodPriceProphet
-                from prophet import Prophet
-                fp = FoodPriceProphet(df)
-                p_df = fp.prepare_data(lab_province, lab_commodity)
-                train_df, test_df = fp.split_data(p_df, test_size=0.2)
-                m = Prophet(
-                    yearly_seasonality=model_params['yearly_seasonality'], 
-                    weekly_seasonality=model_params['weekly_seasonality'], 
-                    changepoint_prior_scale=model_params['changepoint_prior_scale']
-                )
-                m.fit(train_df)
-                pred = m.predict(test_df[['ds']])
-                metrics = calculate_metrics(test_df['y'].values, pred['yhat'].values, "Prophet")
-                all_metrics.append(metrics)
-                predictions['Prophet'] = {'dates': test_df['ds'].values, 'pred': pred['yhat'].values, 'actual': test_df['y'].values}
-            except Exception as e:
-                st.warning(f"Prophet error: {e}")
+        st.markdown("### 📋 Tabel Perbandingan Metrik")
+        metrics_df = result['metrics']
+        display_cols = ['Model', 'RMSE', 'MAE', 'MAPE (%)', 'SMAPE (%)', 'R²',
+                        'Directional Accuracy (%)', 'Kategori MAPE']
+        st.dataframe(
+            metrics_df[display_cols].style.format({
+                'RMSE': '{:,.0f}', 'MAE': '{:,.0f}', 'MAPE (%)': '{:.2f}', 'SMAPE (%)': '{:.2f}',
+                'R²': '{:.3f}', 'Directional Accuracy (%)': '{:.1f}',
+            }).highlight_min(subset=['RMSE', 'MAE', 'MAPE (%)', 'SMAPE (%)'], color='#00CC96')
+              .highlight_max(subset=['R²', 'Directional Accuracy (%)'], color='#00CC96'),
+            use_container_width=True,
+        )
+        best = metrics_df.loc[metrics_df['MAPE (%)'].idxmin()]
+        st.success(f"🏆 MAPE terendah: **{best['Model']}** ({best['MAPE (%)']:.2f}%, kategori {best['Kategori MAPE']})")
+        st.caption("Directional Accuracy dihitung terhadap harga terakhir di titik asal. "
+                   "Kategori MAPE mengikuti Lewis (1982).")
 
-        # LSTM
-        with st.spinner("Training BiLSTM..."):
-            try:
-                import torch
-                from models.lstm_forecast import LSTMForecaster
-                lf = LSTMForecaster(
-                    seq_length=model_params['seq_length'], 
-                    hidden_size=model_params['hidden_size']
-                )
-                # Use prepare_and_split to avoid data leakage
-                Xtr, Xte, ytr, yte = lf.prepare_and_split(
-                    df, lab_province, lab_commodity, test_size=0.2
-                )
-                lf.train_single_series(Xtr, ytr, epochs=model_params['epochs'])
-                lf.model.eval()
-                with torch.no_grad():
-                    yp = lf.model(Xte)
-                    y_pred_lstm = lf.scaler.inverse_transform(yp.numpy().reshape(-1, 1)).flatten()
-                    y_true_lstm = lf.scaler.inverse_transform(yte.numpy().reshape(-1, 1)).flatten()
+        if result['ensemble']:
+            ens_info = result['ensemble']
+            wcols = st.columns(len(ens_info['weights']))
+            for col, (name, weight) in zip(wcols, ens_info['weights'].items()):
+                col.metric(f"Bobot {name}", f"{weight * 100:.0f}%")
+            st.caption(
+                f"Bobot hasil grid search (langkah 5%) pada validasi {sp['n_val']} hari; "
+                f"fallback ke {ens_info['best_single']} aktif pada {ens_info['fallback_days']} hari uji "
+                f"({ens_info['fallback_rate']:.1f}%)."
+            )
 
-                    # Evaluate LSTM on its own test set (no padding)
-                    metrics = calculate_metrics(y_true_lstm, y_pred_lstm, "BiLSTM")
-                    all_metrics.append(metrics)
-                    predictions['BiLSTM'] = {'pred': y_pred_lstm, 'actual': y_true_lstm}
-            except Exception as e:
-                st.warning(f"LSTM error: {e}")
+        st.markdown("### 📉 Prediksi vs Aktual (Test Set)")
+        pf = predictions_frame(result)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=pf.index, y=pf['aktual'], mode='lines', name='Aktual',
+                                 line=dict(color=theme_color('plotly_actual_line'), width=3)))
+        colors = {'Naive Seasonal': '#888888', 'SMA-30': '#A0A0A0', 'ARIMA(5,1,0)': '#C0C0C0',
+                  'Prophet': '#4facfe', 'BiLSTM': '#FFA500', 'TFT': '#FF4B4B', 'Smart Ensemble': '#00CC96'}
+        for name, color in colors.items():
+            if name in pf.columns:
+                fig.add_trace(go.Scatter(x=pf.index, y=pf[name], mode='lines', name=name,
+                                         line=dict(color=color, width=2, dash='dot')))
+        for origin in sorted(set(pf['titik_asal'])):
+            fig.add_vline(x=origin, line_width=0.5, line_color='rgba(128,128,128,0.35)')
+        apply_theme_to_plotly(fig, height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02))
+        fig.update_yaxes(title='Harga (IDR/kg)')
+        st.plotly_chart(fig, use_container_width=True)
 
-        # TFT (check availability)
-        try:
-            from models.tft_forecast import get_tft_forecaster
-            tft = get_tft_forecaster()
-            if tft.is_available:
-                with st.spinner("Training TFT..."):
-                    try:
-                        dataset, data = tft.prepare_dataset(df, lab_province, lab_commodity)
-                        if dataset is not None:
-                            tft.train(
-                                dataset, 
-                                max_epochs=model_params['tft_max_epochs'], 
-                                batch_size=model_params['tft_batch_size']
-                            )
-                            tft_pred = tft.predict(data, dataset)
-                            if tft_pred is not None:
-                                # Get predictions and calculate metrics
-                                actual = test_df['y'].values
-                                pred_vals = tft_pred['mean'][:len(actual)]
-                                if len(pred_vals) < len(actual):
-                                    # padding if needed, but normally TFT predict covers it
-                                    pred_vals = np.pad(pred_vals, (0, len(actual) - len(pred_vals)), 'edge')
-                                
-                                metrics = calculate_metrics(actual, pred_vals, "TFT")
-                                all_metrics.append(metrics)
-                                predictions['TFT'] = {'pred': pred_vals, 'actual': actual}
-                    except Exception as e:
-                        st.info(f"TFT: {e}")
-            else:
-                st.info("ℹ️ TFT tidak tersedia (pytorch-forecasting belum diinstall).")
-        except Exception:
-            st.info("ℹ️ TFT module not available.")
-
-        # Ensemble — evaluate on a consistent common test set
-        if 'Prophet' in predictions and 'BiLSTM' in predictions:
-            with st.spinner("Calculating Smart Ensemble..."):
-                from models.ensemble import SmartEnsemble
-                ensemble = SmartEnsemble()
-                
-                # Find common test length (shortest prediction set)
-                common_len = min(len(predictions[m]['pred']) for m in predictions)
-                
-                # Trim all predictions to common length for ensemble
-                pred_dict = {
-                    'prophet': {'mean': predictions['Prophet']['pred'][:common_len]},
-                    'lstm': {'mean': predictions['BiLSTM']['pred'][:common_len]},
-                }
-                if 'TFT' in predictions:
-                    pred_dict['tft'] = {'mean': predictions['TFT']['pred'][:common_len]}
-                
-                ensemble_res = ensemble.combine_forecasts(pred_dict)
-                ens_pred = ensemble_res['mean']
-                
-                # Use the TAIL of Prophet's actual values to align with the common period
-                # (LSTM test set corresponds to the end of the time series, which is a
-                # subset of Prophet's test set)
-                prophet_actual = predictions['Prophet']['actual']
-                actual_common = prophet_actual[-common_len:]
-                
-                if len(ens_pred) > len(actual_common):
-                    ens_pred = ens_pred[:len(actual_common)]
-                
-                metrics = calculate_metrics(actual_common, ens_pred, "Smart Ensemble")
-                all_metrics.append(metrics)
-                predictions['Smart Ensemble'] = {'pred': ens_pred, 'actual': actual_common}
-
-        if all_metrics:
-            # Metrics comparison table
-            st.markdown("### 📋 Tabel Perbandingan Metrik")
-            metrics_df = pd.DataFrame(all_metrics)
-            display_cols = ['Model', 'RMSE', 'MAE', 'MAPE (%)', 'R²', 'SMAPE (%)', 'Directional Accuracy (%)']
-            available_cols = [c for c in display_cols if c in metrics_df.columns]
-            st.dataframe(metrics_df[available_cols].style.highlight_min(
-                subset=[c for c in ['RMSE', 'MAE', 'MAPE (%)', 'SMAPE (%)'] if c in available_cols],
-                color='#00CC96'
-            ).highlight_max(
-                subset=[c for c in ['R²', 'Directional Accuracy (%)'] if c in available_cols],
-                color='#00CC96'
-            ), use_container_width=True)
-
-            comparison = compare_models(all_metrics)
-            st.success(f"🏆 Best Model: **{comparison['best_model']}** (MAPE: {comparison['best_mape']:.2f}%)")
-
-            # Overlay chart
-            if 'Prophet' in predictions:
-                st.markdown("### 📉 Prediksi vs Aktual (Test Set)")
-                fig = go.Figure()
-
-                if 'dates' in predictions['Prophet']:
-                    x_axis = predictions['Prophet']['dates']
-                else:
-                    x_axis = list(range(len(predictions['Prophet']['actual'])))
-
-                fig.add_trace(go.Scatter(
-                    x=x_axis, y=predictions['Prophet']['actual'],
-                    mode='lines', name='Actual', line=dict(color=theme_color('plotly_actual_line'), width=3)
-                ))
-                
-                colors = {'Naïve Seasonal': '#888888', 'SMA-30': '#A0A0A0', 'ARIMA(5,1,0)': '#C0C0C0', 'Prophet': '#4facfe', 'BiLSTM': '#FFA500', 'TFT': '#FF4B4B', 'Smart Ensemble': '#00CC96'}
-                for model_name, pred_data in predictions.items():
-                    pred_vals = pred_data['pred']
-                    x = x_axis[:len(pred_vals)] if len(pred_vals) <= len(x_axis) else list(range(len(pred_vals)))
-                    fig.add_trace(go.Scatter(
-                        x=x, y=pred_vals,
-                        mode='lines', name=model_name,
-                        line=dict(color=colors.get(model_name, '#FF4B4B'), width=2, dash='dot')
-                    ))
-
-                apply_theme_to_plotly(
-                    fig, height=450,
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02),
-                )
-                fig.update_yaxes(title='Harga (IDR/kg)')
-                st.plotly_chart(fig, use_container_width=True)
-
-            # Radar chart for metrics comparison
-            if len(all_metrics) >= 2:
-                st.markdown("### 🕸️ Radar Perbandingan")
-                categories = ['RMSE\n(lower=better)', 'MAE\n(lower=better)', 'MAPE\n(lower=better)', 
-                             'R²\n(higher=better)', 'Dir. Accuracy\n(higher=better)']
-                fig_radar = go.Figure()
-                for m in all_metrics:
-                    # Normalize to 0-1 scale (invert for "lower is better" metrics)
-                    max_rmse = max(mx['RMSE'] for mx in all_metrics) or 1
-                    max_mae = max(mx['MAE'] for mx in all_metrics) or 1
-                    max_mape = max(mx['MAPE (%)'] for mx in all_metrics) or 1
-                    vals = [
-                        1 - m['RMSE'] / max_rmse,
-                        1 - m['MAE'] / max_mae,
-                        1 - m['MAPE (%)'] / max_mape,
-                        max(0, m.get('R²', 0)),
-                        m.get('Directional Accuracy (%)', 50) / 100,
-                    ]
-                    fig_radar.add_trace(go.Scatterpolar(
-                        r=vals + [vals[0]], theta=categories + [categories[0]],
-                        fill='toself', name=m['Model'], opacity=0.6,
-                    ))
-                apply_theme_to_plotly(
-                    fig_radar,
-                    polar=dict(
-                        bgcolor='rgba(0,0,0,0)',
-                        radialaxis=dict(tickfont=dict(color=theme_color('text_secondary'))),
-                        angularaxis=dict(tickfont=dict(color=theme_color('text_primary')))
-                    ),
-                    height=400,
-                )
-                st.plotly_chart(fig_radar, use_container_width=True)
+        st.markdown("### ⏱️ MAPE menurut Horizon Prediksi")
+        st.dataframe(result['horizon_mape'].style.format(precision=2), use_container_width=True)
+        if not result['intervals'].empty:
+            st.markdown("### 🎯 Cakupan Interval Ketidakpastian")
+            st.dataframe(result['intervals'].style.format(precision=2), use_container_width=True)
+        st.download_button(
+            "⬇️ Unduh prediksi per tanggal (CSV)", pf.to_csv().encode('utf-8'),
+            file_name=f"prediksi_{lab_commodity}_{lab_province}.csv".replace(' ', '_'), mime='text/csv',
+        )
     else:
         st.info("👆 Klik tombol di atas untuk menjalankan perbandingan model.")
 
@@ -416,6 +264,8 @@ with tab2:
 
             # EWS accuracy test
             st.markdown("### 🔔 Akurasi Deteksi EWS")
+            st.caption("Skenario prediksi sempurna (hindsight): harga aktual masa depan dipakai sebagai "
+                       "prediksi. Angka ini batas atas kemampuan logika skor EWS, bukan kinerja model prediksi.")
             with st.spinner("Testing EWS alert accuracy..."):
                 from engine.ews_engine_v2 import EWSEngineV2
                 ews = EWSEngineV2(df)

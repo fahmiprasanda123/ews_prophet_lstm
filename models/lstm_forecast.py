@@ -147,20 +147,73 @@ class LSTMForecaster:
         
         return X_train, X_test, y_train, y_test
     
-    def train_single_series(self, X, y, epochs=20, lr=0.001):
+    def train_single_series(self, X, y, epochs=50, lr=0.001, batch_size=64,
+                            val_fraction=0.1, patience=5, seed=42, verbose=False):
+        """Latih BiLSTM dengan mini-batch, validasi kronologis, dan early stopping.
+
+        Catatan perbaikan: versi sebelumnya melakukan satu langkah gradien
+        full-batch per "epoch", sehingga 10 epoch = 10 langkah optimasi dan
+        model praktis belum belajar. Versi ini mengiterasi seluruh mini-batch
+        di setiap epoch.
+
+        Args:
+            X: Tensor (n, seq_length, 1) berisi urutan input yang sudah diskalakan.
+            y: Tensor (n, 1) berisi target yang sudah diskalakan.
+            epochs: Jumlah epoch maksimum.
+            lr: Learning rate Adam.
+            batch_size: Ukuran mini-batch.
+            val_fraction: Fraksi akhir urutan (kronologis) untuk validasi early stopping.
+            patience: Epoch tanpa perbaikan loss validasi sebelum berhenti.
+            seed: Seed acak agar hasil dapat direproduksi.
+        """
+        import copy
+        torch.manual_seed(seed)
+        np.random.seed(seed)
+
+        n = len(X)
+        n_val = int(n * val_fraction) if val_fraction and n >= 50 else 0
+        X_tr, y_tr = X[:n - n_val], y[:n - n_val]
+        X_val, y_val = (X[n - n_val:], y[n - n_val:]) if n_val > 0 else (None, None)
+
         optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
         loss_fn = nn.MSELoss()
-        
-        self.model.train()
+        generator = torch.Generator().manual_seed(seed)
+
+        best_state, best_val, wait = None, float('inf'), 0
+        self.history = []
         for epoch in range(epochs):
-            optimizer.zero_grad()
-            y_pred = self.model(X)
-            single_loss = loss_fn(y_pred, y)
-            single_loss.backward()
-            optimizer.step()
-            if (epoch+1) % 10 == 0:
-                print(f'Epoch {epoch+1} loss: {single_loss.item():10.8f}')
-        
+            self.model.train()
+            perm = torch.randperm(len(X_tr), generator=generator)
+            epoch_loss = 0.0
+            for start in range(0, len(X_tr), batch_size):
+                idx = perm[start:start + batch_size]
+                optimizer.zero_grad()
+                loss = loss_fn(self.model(X_tr[idx]), y_tr[idx])
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item() * len(idx)
+            epoch_loss /= max(len(X_tr), 1)
+
+            if X_val is not None:
+                self.model.eval()
+                with torch.no_grad():
+                    val_loss = loss_fn(self.model(X_val), y_val).item()
+                self.history.append((epoch + 1, epoch_loss, val_loss))
+                if val_loss < best_val - 1e-7:
+                    best_val, wait = val_loss, 0
+                    best_state = copy.deepcopy(self.model.state_dict())
+                else:
+                    wait += 1
+                    if wait >= patience:
+                        break
+            else:
+                self.history.append((epoch + 1, epoch_loss, None))
+            if verbose:
+                print(f'Epoch {epoch+1}: train={epoch_loss:.6f} val={self.history[-1][2]}')
+
+        if best_state is not None:
+            self.model.load_state_dict(best_state)
+        self.epochs_trained = len(self.history)
         self._is_trained = True
 
     def predict(self, last_sequence):
@@ -233,28 +286,26 @@ class LSTMForecaster:
         if not self._is_trained:
             raise RuntimeError("Model belum dilatih. Panggil train_single_series() terlebih dahulu.")
         
-        # Enable dropout during inference (MC Dropout)
+        # Enable dropout during inference (MC Dropout).
+        # Seluruh sampel diproses sebagai satu batch; tiap baris batch
+        # mendapat masker dropout sendiri sehingga setara dengan n_samples
+        # forward pass terpisah, tetapi jauh lebih cepat.
         self.model.train()  # Keep dropout active
-        
-        all_preds = []
-        for _ in range(n_samples):
-            current_seq = self.scaler.transform(last_sequence.reshape(-1, 1)).flatten()
-            sample_preds = []
-            
-            with torch.no_grad():
-                for __ in range(steps):
-                    input_tensor = torch.FloatTensor(current_seq[-self.seq_length:]).reshape(1, self.seq_length, 1)
-                    pred_scaled = self.model(input_tensor).item()
-                    sample_preds.append(pred_scaled)
-                    current_seq = np.append(current_seq, pred_scaled)
-            
-            sample_preds = np.array(sample_preds).reshape(-1, 1)
-            sample_preds = self.scaler.inverse_transform(sample_preds).flatten()
-            all_preds.append(sample_preds)
-        
+
+        start_seq = self.scaler.transform(np.asarray(last_sequence, dtype=float).reshape(-1, 1)).flatten()
+        current = np.tile(start_seq[-self.seq_length:], (n_samples, 1))  # (n_samples, seq_length)
+        sample_preds = []
+        with torch.no_grad():
+            for __ in range(steps):
+                input_tensor = torch.FloatTensor(current[:, -self.seq_length:]).unsqueeze(-1)
+                pred_scaled = self.model(input_tensor).numpy().reshape(-1)  # (n_samples,)
+                sample_preds.append(pred_scaled)
+                current = np.concatenate([current, pred_scaled[:, None]], axis=1)
+
         self.model.eval()
-        
-        all_preds = np.array(all_preds)  # shape: (n_samples, steps)
+
+        scaled = np.stack(sample_preds, axis=1)  # (n_samples, steps)
+        all_preds = self.scaler.inverse_transform(scaled.reshape(-1, 1)).reshape(n_samples, steps)
         return {
             'mean': np.mean(all_preds, axis=0),
             'lower': np.percentile(all_preds, 5, axis=0),   # 90% CI lower

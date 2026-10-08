@@ -47,7 +47,46 @@ def calculate_directional_accuracy(y_true, y_pred):
     correct = np.sum(np.sign(true_dir) == np.sign(pred_dir))
     return (correct / len(true_dir)) * 100
 
-def calculate_metrics(y_true, y_pred, model_name="Model"):
+def calculate_directional_accuracy_from_origin(y_true, y_pred, y_origin):
+    """
+    Directional Accuracy relatif terhadap harga terakhir yang diketahui di titik asal.
+
+    Untuk prediksi multi-langkah, arah yang relevan bagi sistem peringatan dini
+    adalah apakah harga pada hari target akan lebih tinggi atau lebih rendah
+    daripada harga terakhir yang sudah diketahui saat prediksi dibuat.
+    Hari yang harga aktualnya tidak berubah dari titik asal tidak dihitung.
+
+    Args:
+        y_true: Harga aktual pada hari target.
+        y_pred: Harga prediksi pada hari target.
+        y_origin: Harga aktual terakhir sebelum titik asal untuk tiap hari target.
+
+    Returns:
+        float: Persentase (0-100) arah yang benar.
+    """
+    y_true = np.asarray(y_true, dtype=float).flatten()
+    y_pred = np.asarray(y_pred, dtype=float).flatten()
+    y_origin = np.asarray(y_origin, dtype=float).flatten()
+    true_dir = np.sign(y_true - y_origin)
+    pred_dir = np.sign(y_pred - y_origin)
+    mask = true_dir != 0
+    if not np.any(mask):
+        return 0.0
+    return float(np.mean(true_dir[mask] == pred_dir[mask]) * 100)
+
+def mape_category(mape):
+    """Kategori akurasi MAPE menurut Lewis (1982)."""
+    if mape is None or np.isnan(mape):
+        return "-"
+    if mape < 10:
+        return "Sangat akurat"
+    if mape < 20:
+        return "Baik"
+    if mape < 50:
+        return "Cukup"
+    return "Tidak akurat"
+
+def calculate_metrics(y_true, y_pred, model_name="Model", y_origin=None):
     """
     Menghitung dan mengembalikan berbagai metrik evaluasi:
     RMSE, MAE, MAPE, R², SMAPE, dan Directional Accuracy.
@@ -56,6 +95,9 @@ def calculate_metrics(y_true, y_pred, model_name="Model"):
         y_true (array-like): Nilai aktual.
         y_pred (array-like): Nilai prediksi.
         model_name (str): Nama model untuk keperluan log.
+        y_origin (array-like, opsional): Harga terakhir yang diketahui di titik asal
+            untuk tiap hari target. Jika diberikan, Directional Accuracy dihitung
+            relatif terhadap titik asal (dipakai pada protokol rolling-origin).
         
     Returns:
         dict: Dictionary berisi metrik evaluasi.
@@ -71,7 +113,10 @@ def calculate_metrics(y_true, y_pred, model_name="Model"):
     mape = calculate_mape(y_true, y_pred)
     r2 = r2_score(y_true, y_pred)
     smape = calculate_smape(y_true, y_pred)
-    da = calculate_directional_accuracy(y_true, y_pred)
+    if y_origin is not None:
+        da = calculate_directional_accuracy_from_origin(y_true, y_pred, y_origin)
+    else:
+        da = calculate_directional_accuracy(y_true, y_pred)
     
     metrics = {
         "Model": model_name,

@@ -72,16 +72,32 @@ class WeatherClient:
     ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
     FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
-    def __init__(self, use_live=True, cache_days=7):
+    def __init__(self, use_live=True, cache_days=7, strict=False):
         """
         Args:
             use_live: If True, fetch from Open-Meteo API. If False, use fallback.
             cache_days: Number of days to cache API responses.
+            strict: Jika True, kegagalan mengambil data nyata menimbulkan error
+                alih-alih diam-diam memakai pola sintetis (pola musiman + angka
+                acak). WAJIB True untuk evaluasi dan analisis tesis.
         """
         self.use_live = use_live
         self.cache_days = cache_days
+        self.strict = strict
+        self.fallback_used = set()
         self._cache = {}
         self._enso_cache = None
+
+    def _fallback(self, kind, province=None):
+        """Catat (atau tolak, bila strict) pemakaian data sintetis."""
+        label = f"{kind}:{province}" if province else kind
+        if self.strict:
+            raise RuntimeError(
+                f"Data {kind} nyata tidak tersedia ({province or 'nasional'}). "
+                "Mode strict menolak data sintetis; periksa koneksi ke Open-Meteo/NOAA."
+            )
+        logger.warning(f"PERINGATAN: memakai data {kind} SINTETIS untuk {province or 'nasional'}")
+        self.fallback_used.add(label)
 
     def get_rainfall(self, province: str, dates: pd.DatetimeIndex) -> pd.Series:
         """Get daily precipitation data for a province.
@@ -96,6 +112,7 @@ class WeatherClient:
             except Exception as e:
                 logger.warning(f"Open-Meteo fetch failed for {province}, using fallback: {e}")
 
+        self._fallback('curah hujan', province)
         return self._generate_seasonal_rainfall(province, dates)
 
     def get_temperature(self, province: str, dates: pd.DatetimeIndex) -> pd.Series:
@@ -112,6 +129,7 @@ class WeatherClient:
                 logger.warning(f"Open-Meteo temp fetch failed: {e}")
 
         # Fallback: tropical average
+        self._fallback('suhu', province)
         return pd.Series(
             np.random.normal(27.5, 1.5, len(dates)),
             index=dates, name='temperature_c'
@@ -126,6 +144,7 @@ class WeatherClient:
             return self._fetch_noaa_enso(dates)
         except Exception as e:
             logger.warning(f"NOAA ENSO fetch failed, using proxy: {e}")
+            self._fallback('ENSO')
             return self._generate_enso_proxy(dates)
 
     def get_weather_features(self, province: str, dates: pd.DatetimeIndex) -> pd.DataFrame:

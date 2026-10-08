@@ -250,6 +250,8 @@ with m_tab2:
     | **Arsitektur** | 2-layer Bidirectional LSTM + Dropout + Linear |
     | **Hidden Size** | 128 units per direction (256 total) |
     | **Sequence Length** | 30 hari (lookback window) |
+    | **Input** | Univariat: 30 harga harian terakhir, diskalakan ke [-1, 1] |
+    | **Pelatihan** | Mini-batch 64, Adam (lr 0,001), maks. 50 epoch + early stopping (patience 5) |
     | **Output** | Single-step atau Multi-step (recursive) |
     | **Uncertainty** | MC Dropout (50 forward passes untuk confidence interval) |
     | **Kelebihan** | Menangkap pola temporal kompleks, baik untuk short-term |
@@ -285,18 +287,19 @@ with m_tab3:
 with m_tab4:
     st.markdown("### 🎯 Smart Ensemble")
     st.markdown("""
-    **Smart Ensemble** menggabungkan prediksi dari ketiga model dengan bobot adaptif:
-    
-    | Horizon | Prophet | LSTM | TFT |
-    |---------|---------|------|-----|
-    | **1-7 hari** (short-term) | 25% | 50% | 25% |
-    | **8-30 hari** (medium-term) | 35% | 30% | 35% |
-    | **31+ hari** (long-term) | 45% | 10% | 45% |
-    
-    #### Fitur Adaptif:
-    - **Dynamic Weight**: Bobot otomatis diperbarui berdasarkan MAPE terbaru tiap model
-    - **Fallback Cascade**: Jika model tidak tersedia → gunakan yang tersedia saja
-    - **Confidence Interval**: Gabungan terluas dari semua model (union bound)
+    **Smart Ensemble** menggabungkan prediksi Prophet, BiLSTM, dan TFT dengan bobot yang
+    **dicari dari data**, bukan ditetapkan manual:
+
+    | Tahap | Keterangan |
+    |-------|------------|
+    | **Periode validasi** | 20% terakhir data latih (sebelum periode uji) |
+    | **Pencarian bobot** | Grid search kelipatan 5% (jumlah bobot = 100%), meminimalkan MAPE validasi |
+    | **Adaptif** | Bobot dihitung ulang setiap kali model dilatih ulang dengan data terbaru |
+    | **Fallback** | Jika sebaran prediksi antarmodel (koefisien variasi) > 15%, dipakai model dengan MAPE validasi terbaik |
+    | **Interval** | Gabungan terluas dari interval model penyusun |
+
+    Bobot yang sedang dipakai untuk komoditas–provinsi terpilih ditampilkan di Dashboard dan
+    di Model Laboratory setelah perbandingan model dijalankan.
     """)
 
 # =====================================================================
