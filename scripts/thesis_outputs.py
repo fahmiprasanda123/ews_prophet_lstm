@@ -11,6 +11,8 @@ Contoh pemakaian (jalankan dari folder utama repositori):
 Semua keluaran ditulis ke folder --output (bawaan: thesis_outputs/). Berkas
 ringkasan_untuk_naskah.md memetakan setiap angka ke tabel/subbab di naskah.
 """
+from __future__ import annotations
+
 import argparse
 import hashlib
 import json
