@@ -71,18 +71,23 @@ st.sidebar.markdown("---")
 selected_province = st.sidebar.selectbox("🗺️ Provinsi", sorted(df['province'].unique()), index=min(10, len(df['province'].unique())-1))
 selected_commodity = st.sidebar.selectbox("🌽 Komoditas", sorted(df['commodity'].unique()), index=0)
 
-max_date = df['date'].max() + datetime.timedelta(days=120)
+# Horizon dibatasi 30 hari dari data terakhir, sesuai horizon yang divalidasi
+# protokol evaluasi. Prakiraan rekursif BiLSTM melenceng jauh di luar horizon ini.
+MAX_HORIZON_DAYS = 30
+last_data_date = df['date'].max().date()
 today = datetime.date.today()
-# Use whichever is later: day after last data point or today
-min_date = max(df['date'].max().date() + datetime.timedelta(days=1), today)
-max_date_val = max(max_date.date() if hasattr(max_date, 'date') else max_date, today + datetime.timedelta(days=120))
-default_date = min(min_date + datetime.timedelta(days=29), max_date_val)
+min_date = last_data_date + datetime.timedelta(days=1)
+max_date_val = last_data_date + datetime.timedelta(days=MAX_HORIZON_DAYS)
 forecast_date = st.sidebar.date_input(
     "📅 Target Prediksi",
-    value=default_date,
+    value=max_date_val,
     min_value=min_date,
-    max_value=max_date_val
+    max_value=max_date_val,
+    help=f"Maksimal {MAX_HORIZON_DAYS} hari setelah data terakhir ({last_data_date:%d %b %Y})."
 )
+if (today - last_data_date).days > 7:
+    st.sidebar.warning(f"Data terakhir {last_data_date:%d %b %Y}, tertinggal {(today - last_data_date).days} hari. "
+                       "Sinkronkan data agar prakiraan mencakup tanggal sekarang.")
 
 model_choice = st.sidebar.selectbox("🤖 Model AI", ["Smart Ensemble (All Models)", "Hybrid (Prophet + BiLSTM)", "TFT (Transformer)", "Prophet Only", "BiLSTM Only"], index=0)
 
