@@ -1,5 +1,5 @@
 """
-EWS Engine v2 — Intelligent Multi-Factor Early Warning System.
+EWS Engine v2: Intelligent Multi-Factor Early Warning System.
 Replaces the simple threshold-based engine with a composite scoring model.
 
 Factors:
@@ -231,10 +231,10 @@ class EWSEngineV2:
         direction = "naik" if pct > 0 else "turun"
 
         messages = {
-            'Danger': f"⚠️ BAHAYA: Harga diprediksi {direction} {abs(pct):.1f}%. Risiko tinggi lonjakan harga akut!",
-            'Alert': f"🔸 WASPADA: Harga diprediksi {direction} {abs(pct):.1f}%. Perlu monitoring intensif.",
-            'Watch': f"👀 PERHATIAN: Harga diprediksi {direction} {abs(pct):.1f}%. Tren perlu diawasi.",
-            'Normal': f"✅ STABIL: Harga diprediksi {direction} {abs(pct):.1f}%. Kondisi pasar normal.",
+            'Danger': f"Harga diprediksi {direction} {abs(pct):.1f}%. Risiko tinggi lonjakan harga akut.",
+            'Alert': f"Harga diprediksi {direction} {abs(pct):.1f}%. Perlu pemantauan intensif.",
+            'Watch': f"Harga diprediksi {direction} {abs(pct):.1f}%. Tren perlu diawasi.",
+            'Normal': f"Harga diprediksi {direction} {abs(pct):.1f}%. Kondisi pasar normal.",
         }
         return messages.get(level, "Status tidak diketahui.")
 
@@ -242,26 +242,26 @@ class EWSEngineV2:
         recs = []
         
         if level in ['Danger', 'Alert']:
-            recs.append("📌 Aktifkan monitoring harga harian untuk komoditas ini.")
+            recs.append("Aktifkan pemantauan harga harian untuk komoditas ini.")
             
             if factors.get('volatility', 0) > 60:
-                recs.append("📊 Volatilitas tinggi terdeteksi. Pertimbangkan operasi pasar (OP) untuk stabilisasi.")
+                recs.append("Volatilitas tinggi terdeteksi. Pertimbangkan operasi pasar (OP) untuk stabilisasi.")
             
             if factors.get('cross_region', 0) > 60:
-                recs.append("🗺️ Anomali regional terdeteksi. Periksa jalur distribusi antar provinsi.")
+                recs.append("Anomali regional terdeteksi. Periksa jalur distribusi antar provinsi.")
             
             if factors.get('velocity', 0) > 60:
-                recs.append("🚀 Akselerasi kenaikan harga terdeteksi. Risiko eskalasi dalam 1-2 minggu.")
+                recs.append("Akselerasi kenaikan harga terdeteksi. Risiko eskalasi dalam 1-2 minggu.")
             
             if factors.get('seasonal', 0) > 60:
-                recs.append("📅 Perubahan melebihi pola musiman normal. Kemungkinan ada faktor eksternal.")
+                recs.append("Perubahan melebihi pola musiman normal. Kemungkinan ada faktor eksternal.")
         
         elif level == 'Watch':
-            recs.append("📋 Pantau perkembangan harga dalam 7 hari ke depan.")
-            recs.append("📊 Evaluasi kembali jika tren berlanjut.")
+            recs.append("Pantau perkembangan harga dalam 7 hari ke depan.")
+            recs.append("Evaluasi kembali jika tren berlanjut.")
         
         else:
-            recs.append("✅ Tidak diperlukan tindakan khusus. Pasar dalam kondisi stabil.")
+            recs.append("Tidak diperlukan tindakan khusus. Pasar dalam kondisi stabil.")
 
         return recs
 
@@ -269,7 +269,7 @@ class EWSEngineV2:
         return {
             'score': 0,
             'level': 'Unknown',
-            'message': '⚠️ Data tidak cukup untuk analisis EWS.',
+            'message': 'Data tidak cukup untuk analisis EWS.',
             'color': '#666666',
             'factors': {},
             'recommendations': ['Kumpulkan lebih banyak data historis (minimal 30 hari).'],
@@ -297,10 +297,10 @@ class EWSEngineV2:
         pct_change = (predicted_price - current_price) / current_price if current_price > 0 else 0
         
         if pct_change >= 0.20:
-            return "Danger", "⚠️ High risk of acute price surge!"
+            return "Danger", "High risk of acute price surge!"
         elif pct_change >= 0.10:
-            return "Alert", "🔸 Moderate price increase predicted."
+            return "Alert", "Moderate price increase predicted."
         elif pct_change <= -0.10:
-            return "Normal (Downward)", "📉 Price is expected to decrease."
+            return "Normal (Downward)", "Price is expected to decrease."
         else:
-            return "Normal", "✅ Price is stable."
+            return "Normal", "Price is stable."

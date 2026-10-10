@@ -12,57 +12,58 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import theme
 
 
+def _luminance(hex_color):
+    def channel(c):
+        c = c / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def _contrast(a, b):
+    la, lb = sorted((_luminance(a), _luminance(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+LIGHT_BG, DARK_BG = "#F7F6F2", "#121613"
+
+
 class TestTheme(unittest.TestCase):
-    def setUp(self):
-        import streamlit as st
-        if not hasattr(st, "session_state"):
-            st.session_state = {}
-        else:
-            st.session_state.clear()
-
-    def test_default_theme_is_dark(self):
-        import streamlit as st
-        self.assertEqual(theme.get_theme(), "dark")
-        self.assertEqual(st.session_state.get("theme_mode"), "dark")
-
-    def test_switch_theme_to_light(self):
-        import streamlit as st
-        st.session_state["theme_mode"] = "light"
+    def test_get_theme_defaults_to_light_outside_streamlit(self):
         self.assertEqual(theme.get_theme(), "light")
 
-    def test_plotly_template(self):
-        import streamlit as st
-        st.session_state["theme_mode"] = "dark"
-        self.assertEqual(theme.get_plotly_template(), "plotly_dark")
-        
-        st.session_state["theme_mode"] = "light"
-        self.assertEqual(theme.get_plotly_template(), "plotly_white")
+    def test_status_chips_meet_wcag_aa(self):
+        for name, c in theme.STATUS.items():
+            self.assertGreaterEqual(_contrast(c["fg"], c["bg"]), 4.5, name)
 
-    def test_theme_color_keys_match(self):
-        self.assertEqual(set(theme.DARK_PALETTE.keys()), set(theme.LIGHT_PALETTE.keys()))
+    def test_chart_colors_meet_non_text_contrast_in_both_themes(self):
+        for name, color in theme.CHART.items():
+            self.assertGreaterEqual(_contrast(color, LIGHT_BG), 3.0, f"{name} on light")
+            self.assertGreaterEqual(_contrast(color, DARK_BG), 3.0, f"{name} on dark")
 
-    def test_theme_color_function(self):
-        import streamlit as st
-        st.session_state["theme_mode"] = "dark"
-        self.assertEqual(theme.theme_color("bg_primary"), "#0E1117")
+    def test_status_chip_escapes_text(self):
+        html = theme.status_chip("<b>Bahaya</b>", "danger")
+        self.assertIn("&lt;b&gt;Bahaya&lt;/b&gt;", html)
+        self.assertIn(theme.STATUS["danger"]["bg"], html)
 
-        st.session_state["theme_mode"] = "light"
-        self.assertEqual(theme.theme_color("bg_primary"), "#F8FAFC")
+    def test_ews_card_unknown_level_uses_neutral(self):
+        html = theme.ews_card("Unknown", 0, "pesan")
+        self.assertIn(theme.STATUS["neutral"]["bg"], html)
+        self.assertIn("Belum ada", html)
+        self.assertNotIn("/100", html)
 
-    def test_get_plotly_layout(self):
-        import streamlit as st
-        st.session_state["theme_mode"] = "light"
-        layout = theme.get_plotly_layout()
-        self.assertEqual(layout["template"], "plotly_white")
-        self.assertIn("paper_bgcolor", layout)
-        self.assertIn("plot_bgcolor", layout)
+    def test_ews_card_translates_level(self):
+        self.assertIn("Waspada", theme.ews_card("Alert", 55, ""))
+
+    def test_ews_card_shows_message(self):
+        html = theme.ews_card("Alert", 55, "Harga diprediksi naik 21.0%.")
+        self.assertIn("Harga diprediksi naik 21.0%.", html)
+        self.assertIn("55", html)
 
     def test_apply_theme_to_plotly_with_custom_legend_and_title(self):
-        import streamlit as st
-        st.session_state["theme_mode"] = "light"
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=[1, 2], y=[3, 4]))
-        
+
         # Test calling with legend and title kwargs to ensure no duplicate keyword error
         res = theme.apply_theme_to_plotly(
             fig,
@@ -73,7 +74,8 @@ class TestTheme(unittest.TestCase):
         self.assertEqual(res.layout.title.text, "My Test Title")
         self.assertEqual(res.layout.legend.orientation, "h")
         self.assertEqual(res.layout.height, 450)
-        self.assertEqual(res.layout.font.color, "#0F172A")
+        # Warna teks diserahkan ke tema Streamlit agar ikut berganti terang/gelap
+        self.assertIsNone(res.layout.font.color)
 
 
 if __name__ == "__main__":

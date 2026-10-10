@@ -196,7 +196,7 @@ class ChatbotEngine:
         """
         msg = user_message.strip()
         if not msg:
-            return self._response("Silakan ketik pertanyaan Anda 😊")
+            return self._response("Silakan ketik pertanyaan Anda.")
 
         # Detect intent
         intent = self._detect_intent(msg)
@@ -303,50 +303,50 @@ class ChatbotEngine:
     def _handle_salam(self, msg, commodity, provinces):
         hour = datetime.now().hour
         if hour < 11:
-            greeting = "Selamat pagi! ☀️"
+            greeting = "Selamat pagi!"
         elif hour < 15:
-            greeting = "Selamat siang! 🌤️"
+            greeting = "Selamat siang!"
         elif hour < 18:
-            greeting = "Selamat sore! 🌅"
+            greeting = "Selamat sore!"
         else:
-            greeting = "Selamat malam! 🌙"
+            greeting = "Selamat malam!"
 
         return self._response(
             f"{greeting}\n\n"
-            f"Saya adalah **Agri-AI Chatbot** 🤖, asisten virtual untuk sistem peringatan dini harga pangan.\n\n"
+            f"Saya adalah **Agri-AI Chatbot**, asisten virtual untuk sistem peringatan dini harga pangan.\n\n"
             f"Saya bisa membantu Anda dengan:\n"
-            f"- 💰 Cek harga komoditas terbaru\n"
-            f"- 🔮 Prediksi harga dengan AI (Prophet + LSTM)\n"
-            f"- 📈 Analisis tren harga\n"
-            f"- 📊 Statistik & perbandingan harga\n"
-            f"- 🗺️ Informasi provinsi & komoditas\n\n"
+            f"- Cek harga komoditas terbaru\n"
+            f"- Prediksi harga 30 hari ke depan (model Prophet)\n"
+            f"- Analisis tren harga\n"
+            f"- Statistik & perbandingan harga\n"
+            f"- Informasi provinsi & komoditas\n\n"
             f"Silakan tanyakan apa saja! Contoh: *\"Prediksi harga beras di Jakarta\"*"
         )
 
     def _handle_bantuan(self, msg, commodity, provinces):
         return self._response(
-            "## 📖 Panduan Penggunaan Chatbot\n\n"
+            "## Panduan Penggunaan Chatbot\n\n"
             "Berikut contoh pertanyaan yang bisa Anda ajukan:\n\n"
             "| Kategori | Contoh Pertanyaan |\n"
             "|----------|------------------|\n"
-            "| 💰 **Harga** | *\"Berapa harga beras di Jakarta?\"* |\n"
-            "| 🔮 **Prediksi** | *\"Prediksi harga cabai di Jakarta 30 hari\"* |\n"
-            "| 📈 **Tren** | *\"Bagaimana tren harga cabai?\"* |\n"
-            "| 📊 **Statistik** | *\"Rata-rata harga bawang merah\"* |\n"
-            "| 🔄 **Perbandingan** | *\"Bandingkan harga beras Jakarta dan Jawa Barat\"* |\n"
-            "| 📋 **Daftar** | *\"Komoditas apa saja yang tersedia?\"* |\n"
-            "| 🗺️ **Wilayah** | *\"Provinsi mana saja?\"* |\n\n"
-            "> 💡 **Tips**: Semakin spesifik pertanyaan Anda, semakin akurat jawaban saya!"
+            "| **Harga** | *\"Berapa harga beras di Jakarta?\"* |\n"
+            "| **Prediksi** | *\"Prediksi harga cabai di Jakarta 30 hari\"* |\n"
+            "| **Tren** | *\"Bagaimana tren harga cabai?\"* |\n"
+            "| **Statistik** | *\"Rata-rata harga bawang merah\"* |\n"
+            "| **Perbandingan** | *\"Bandingkan harga beras Jakarta dan Jawa Barat\"* |\n"
+            "| **Daftar** | *\"Komoditas apa saja yang tersedia?\"* |\n"
+            "| **Wilayah** | *\"Provinsi mana saja?\"* |\n\n"
+            "> **Tips**: sebutkan komoditas dan provinsi agar jawabannya tepat sasaran."
         )
 
     def _handle_daftar_komoditas(self, msg, commodity, provinces):
         commodities = self._get_commodities()
         if not commodities:
-            return self._response("⚠️ Belum ada data komoditas di database.")
+            return self._response("Belum ada data komoditas di database.")
 
         items = "\n".join(f"- {c}" for c in commodities)
         return self._response(
-            f"## 🌽 Daftar Komoditas Tersedia\n\n"
+            f"## Daftar Komoditas Tersedia\n\n"
             f"Terdapat **{len(commodities)} komoditas** yang dipantau:\n\n"
             f"{items}\n\n"
             f"Tanyakan harga spesifik, misalnya: *\"Berapa harga cabai di Jawa Timur?\"*"
@@ -355,7 +355,7 @@ class ChatbotEngine:
     def _handle_daftar_provinsi(self, msg, commodity, provinces):
         provs = self._get_provinces()
         if not provs:
-            return self._response("⚠️ Belum ada data provinsi di database.")
+            return self._response("Belum ada data provinsi di database.")
 
         # Show in 2-column format
         mid = (len(provs) + 1) // 2
@@ -371,7 +371,7 @@ class ChatbotEngine:
         table = "| Provinsi | Provinsi |\n|----------|----------|\n" + "\n".join(rows)
 
         return self._response(
-            f"## 🗺️ Daftar Provinsi\n\n"
+            f"## Daftar Provinsi\n\n"
             f"Data tersedia untuk **{len(provs)} provinsi**:\n\n"
             f"{table}"
         )
@@ -381,7 +381,7 @@ class ChatbotEngine:
             # General latest prices overview
             latest = self.store.get_latest_prices()
             if latest.empty:
-                return self._response("⚠️ Belum ada data harga di database.")
+                return self._response("Belum ada data harga di database.")
 
             # Show summary per commodity (national average)
             summary = latest.groupby("commodity")["price"].agg(["mean", "min", "max"]).reset_index()
@@ -401,7 +401,7 @@ class ChatbotEngine:
             )
 
             return self._response(
-                f"## 💰 Ringkasan Harga Terbaru (Nasional)\n\n{table}\n\n"
+                f"## Ringkasan Harga Terbaru (Nasional)\n\n{table}\n\n"
                 f"Untuk detail spesifik, coba: *\"Harga beras di Jakarta\"*"
             )
 
@@ -410,7 +410,7 @@ class ChatbotEngine:
             series = self.store.get_series(province, commodity)
             if series.empty:
                 return self._response(
-                    f"⚠️ Tidak ditemukan data harga **{commodity}** di **{province}**."
+                    f"Tidak ditemukan data harga **{commodity}** di **{province}**."
                 )
 
             latest_price = series["price"].iloc[-1]
@@ -423,16 +423,16 @@ class ChatbotEngine:
                 change = latest_price - prev_price
                 pct = (change / prev_price) * 100
                 if change > 0:
-                    change_text = f"📈 Naik **{self._fmt_price(abs(change))}** (+{pct:.1f}%) dari data sebelumnya"
+                    change_text = f"Naik **{self._fmt_price(abs(change))}** (+{pct:.1f}%) dari data sebelumnya"
                 elif change < 0:
-                    change_text = f"📉 Turun **{self._fmt_price(abs(change))}** ({pct:.1f}%) dari data sebelumnya"
+                    change_text = f"Turun **{self._fmt_price(abs(change))}** ({pct:.1f}%) dari data sebelumnya"
                 else:
-                    change_text = "➡️ Stabil, tidak ada perubahan dari data sebelumnya"
+                    change_text = "Stabil, tidak ada perubahan dari data sebelumnya"
 
             return self._response(
-                f"## 💰 Harga {commodity} di {province}\n\n"
+                f"## Harga {commodity} di {province}\n\n"
                 f"**{self._fmt_price(latest_price)}** per kg\n\n"
-                f"📅 Data terakhir: {latest_date}\n\n"
+                f"Data terakhir: {latest_date}\n\n"
                 f"{change_text}",
                 chart_data=series.tail(30),
                 chart_type="line",
@@ -442,17 +442,17 @@ class ChatbotEngine:
         if commodity:
             latest = self.store.get_latest_prices(commodity)
             if latest.empty:
-                return self._response(f"⚠️ Tidak ditemukan data harga **{commodity}**.")
+                return self._response(f"Tidak ditemukan data harga **{commodity}**.")
 
             avg_price = latest["price"].mean()
             min_row = latest.loc[latest["price"].idxmin()]
             max_row = latest.loc[latest["price"].idxmax()]
 
             return self._response(
-                f"## 💰 Harga {commodity} (Nasional)\n\n"
-                f"- 📊 Rata-rata nasional: **{self._fmt_price(avg_price)}**\n"
-                f"- 📉 Terendah: **{self._fmt_price(min_row['price'])}** ({min_row['province']})\n"
-                f"- 📈 Tertinggi: **{self._fmt_price(max_row['price'])}** ({max_row['province']})\n\n"
+                f"## Harga {commodity} (Nasional)\n\n"
+                f"- Rata-rata nasional: **{self._fmt_price(avg_price)}**\n"
+                f"- Terendah: **{self._fmt_price(min_row['price'])}** ({min_row['province']})\n"
+                f"- Tertinggi: **{self._fmt_price(max_row['price'])}** ({max_row['province']})\n\n"
                 f"Untuk melihat di provinsi tertentu, coba: *\"Harga {commodity.lower()} di Jakarta\"*"
             )
 
@@ -462,7 +462,7 @@ class ChatbotEngine:
             prov_data = latest[latest["province"] == province]
             if prov_data.empty:
                 return self._response(
-                    f"⚠️ Tidak ditemukan data harga untuk **{province}**."
+                    f"Tidak ditemukan data harga untuk **{province}**."
                 )
 
             rows = []
@@ -472,7 +472,7 @@ class ChatbotEngine:
             table = "| Komoditas | Harga |\n|-----------|-------|\n" + "\n".join(rows)
 
             return self._response(
-                f"## 💰 Harga Komoditas di {province}\n\n{table}"
+                f"## Harga Komoditas di {province}\n\n{table}"
             )
 
         return self._response("Silakan sebutkan komoditas atau provinsi yang ingin dicek harganya.")
@@ -480,7 +480,7 @@ class ChatbotEngine:
     def _handle_tren(self, msg, commodity, provinces):
         if not commodity:
             return self._response(
-                "📈 Untuk melihat tren harga, sebutkan **komoditas** yang ingin dianalisis.\n\n"
+                "Untuk melihat tren harga, sebutkan **komoditas** yang ingin dianalisis.\n\n"
                 "Contoh: *\"Tren harga cabai\"* atau *\"Bagaimana perkembangan harga beras di Jakarta?\"*"
             )
 
@@ -497,7 +497,7 @@ class ChatbotEngine:
 
         if series.empty:
             loc_text = f" di {province}" if province else " (nasional)"
-            return self._response(f"⚠️ Tidak ditemukan data tren **{commodity}**{loc_text}.")
+            return self._response(f"Tidak ditemukan data tren **{commodity}**{loc_text}.")
 
         # Analyze last 30 and 90 days
         recent_30 = series.tail(30)
@@ -519,28 +519,24 @@ class ChatbotEngine:
 
         # Trend description
         if change_30 > 5:
-            trend_emoji = "🔴"
             trend_desc = "**naik signifikan**"
         elif change_30 > 0:
-            trend_emoji = "🟡"
             trend_desc = "**naik sedikit**"
         elif change_30 > -5:
-            trend_emoji = "🟢"
             trend_desc = "**turun sedikit**"
         else:
-            trend_emoji = "🟢"
             trend_desc = "**turun signifikan**"
 
         volatility = recent_30["price"].std() / recent_30["price"].mean() * 100
-        vol_desc = "tinggi ⚠️" if volatility > 10 else "sedang" if volatility > 5 else "rendah ✅"
+        vol_desc = "tinggi" if volatility > 10 else "sedang" if volatility > 5 else "rendah"
 
         loc_text = f" di {province}" if province else " (Nasional)"
 
         return self._response(
-            f"## 📈 Analisis Tren {commodity}{loc_text}\n\n"
+            f"## Analisis Tren {commodity}{loc_text}\n\n"
             f"### Perubahan Harga\n"
-            f"- {trend_emoji} **30 hari terakhir**: Harga {trend_desc} ({change_30:+.1f}%)\n"
-            f"- {'📈' if change_90 > 0 else '📉'} **90 hari terakhir**: {change_90:+.1f}%\n\n"
+            f"- **30 hari terakhir**: Harga {trend_desc} ({change_30:+.1f}%)\n"
+            f"- **90 hari terakhir**: {change_90:+.1f}%\n\n"
             f"### Volatilitas\n"
             f"- Tingkat volatilitas: **{vol_desc}** (CoV: {volatility:.1f}%)\n\n"
             f"### Harga Saat Ini\n"
@@ -554,7 +550,7 @@ class ChatbotEngine:
     def _handle_statistik(self, msg, commodity, provinces):
         if not commodity:
             return self._response(
-                "📊 Untuk melihat statistik, sebutkan **komoditas** yang ingin dianalisis.\n\n"
+                "Untuk melihat statistik, sebutkan **komoditas** yang ingin dianalisis.\n\n"
                 "Contoh: *\"Statistik harga beras\"* atau *\"Rata-rata harga cabai di Jakarta\"*"
             )
 
@@ -570,7 +566,7 @@ class ChatbotEngine:
 
         if series.empty:
             loc_text = f" di {province}" if province else ""
-            return self._response(f"⚠️ Tidak ditemukan data **{commodity}**{loc_text}.")
+            return self._response(f"Tidak ditemukan data **{commodity}**{loc_text}.")
 
         prices = series["price"]
         loc_text = f" di {province}" if province else " (Nasional)"
@@ -585,13 +581,13 @@ class ChatbotEngine:
             for period, avg in monthly.items():
                 monthly_rows.append(f"| {period} | {self._fmt_price(avg)} |")
             monthly_text = (
-                "\n### 📅 Rata-rata Bulanan (6 bulan terakhir)\n\n"
+                "\n### Rata-rata Bulanan (6 bulan terakhir)\n\n"
                 "| Bulan | Rata-rata |\n|-------|----------|\n"
                 + "\n".join(monthly_rows)
             )
 
         return self._response(
-            f"## 📊 Statistik {commodity}{loc_text}\n\n"
+            f"## Statistik {commodity}{loc_text}\n\n"
             f"| Metrik | Nilai |\n"
             f"|--------|-------|\n"
             f"| Jumlah data | {len(prices):,} |\n"
@@ -609,13 +605,13 @@ class ChatbotEngine:
     def _handle_bandingkan(self, msg, commodity, provinces):
         if not commodity:
             return self._response(
-                "🔄 Untuk membandingkan harga, sebutkan **komoditas** dan **dua provinsi**.\n\n"
+                "Untuk membandingkan harga, sebutkan **komoditas** dan **dua provinsi**.\n\n"
                 "Contoh: *\"Bandingkan harga beras Jakarta dan Jawa Barat\"*"
             )
 
         if len(provinces) < 2:
             return self._response(
-                f"🔄 Untuk membandingkan harga **{commodity}**, sebutkan **dua provinsi**.\n\n"
+                f"Untuk membandingkan harga **{commodity}**, sebutkan **dua provinsi**.\n\n"
                 f"Contoh: *\"Bandingkan harga {commodity.lower()} Jakarta dan Jawa Barat\"*"
             )
 
@@ -625,7 +621,7 @@ class ChatbotEngine:
 
         if series1.empty and series2.empty:
             return self._response(
-                f"⚠️ Tidak ditemukan data **{commodity}** untuk {prov1} maupun {prov2}."
+                f"Tidak ditemukan data **{commodity}** untuk {prov1} maupun {prov2}."
             )
 
         rows = []
@@ -663,7 +659,7 @@ class ChatbotEngine:
             higher = prov1 if p1 > p2 else prov2
             pct = (diff / min(p1, p2)) * 100
             diff_text = (
-                f"\n### 📌 Kesimpulan\n"
+                f"\n### Kesimpulan\n"
                 f"Harga **{commodity}** di **{higher}** lebih tinggi "
                 f"**{self._fmt_price(diff)}** ({pct:.1f}%) dibanding provinsi lainnya."
             )
@@ -678,7 +674,7 @@ class ChatbotEngine:
             chart_data = pd.concat([s1, s2], ignore_index=True)
 
         return self._response(
-            f"## 🔄 Perbandingan Harga {commodity}\n\n{table}\n{diff_text}",
+            f"## Perbandingan Harga {commodity}\n\n{table}\n{diff_text}",
             chart_data=chart_data,
             chart_type="compare_line",
             chart_title=f"Perbandingan {commodity}: {prov1} vs {prov2}",
@@ -688,7 +684,7 @@ class ChatbotEngine:
         """Handle price prediction/forecast requests using Prophet model."""
         if not commodity:
             return self._response(
-                "🔮 Untuk prediksi harga, sebutkan **komoditas** yang ingin diprediksi.\n\n"
+                "Untuk prediksi harga, sebutkan **komoditas** yang ingin diprediksi.\n\n"
                 "Contoh:\n"
                 "- *\"Prediksi harga beras di Jakarta\"*\n"
                 "- *\"Forecast harga cabai 30 hari\"*\n"
@@ -704,13 +700,13 @@ class ChatbotEngine:
             from models.prophet_forecast import FoodPriceProphet
         except ImportError:
             return self._response(
-                "⚠️ Modul Prophet tidak tersedia. Pastikan library `prophet` terinstall."
+                "Modul Prophet tidak tersedia. Pastikan library `prophet` terinstall."
             )
 
         # Load data
         all_data = self.store.load_all()
         if all_data.empty:
-            return self._response("⚠️ Tidak ada data untuk melakukan prediksi.")
+            return self._response("Tidak ada data untuk melakukan prediksi.")
 
         loc_text = f" di {province}" if province else " (Nasional)"
 
@@ -723,7 +719,7 @@ class ChatbotEngine:
                 ]
                 if subset.empty or len(subset) < 30:
                     return self._response(
-                        f"⚠️ Data **{commodity}**{loc_text} tidak cukup untuk prediksi "
+                        f"Data **{commodity}**{loc_text} tidak cukup untuk prediksi "
                         f"(minimal 30 data point, tersedia {len(subset)})."
                     )
                 forecaster = FoodPriceProphet(all_data)
@@ -737,7 +733,7 @@ class ChatbotEngine:
                 ].groupby("province").size()
                 if prov_counts.empty:
                     return self._response(
-                        f"⚠️ Tidak ditemukan data **{commodity}** di database."
+                        f"Tidak ditemukan data **{commodity}** di database."
                     )
                 best_prov = prov_counts.idxmax()
                 province = best_prov
@@ -760,7 +756,7 @@ class ChatbotEngine:
 
             if future_forecast.empty:
                 return self._response(
-                    f"⚠️ Tidak dapat menghasilkan prediksi untuk **{commodity}**{loc_text}."
+                    f"Tidak dapat menghasilkan prediksi untuk **{commodity}**{loc_text}."
                 )
 
             # Key prediction points
@@ -775,28 +771,28 @@ class ChatbotEngine:
                 change_30 = pred_30d["yhat"] - last_actual
                 pct_30 = (change_30 / last_actual) * 100
                 if change_30 > 0:
-                    change_text = f"\n📈 Harga diprediksi **naik {self._fmt_price(abs(change_30))}** (+{pct_30:.1f}%) dalam 30 hari."
+                    change_text = f"\nHarga diprediksi **naik {self._fmt_price(abs(change_30))}** (+{pct_30:.1f}%) dalam 30 hari."
                 elif change_30 < 0:
-                    change_text = f"\n📉 Harga diprediksi **turun {self._fmt_price(abs(change_30))}** ({pct_30:.1f}%) dalam 30 hari."
+                    change_text = f"\nHarga diprediksi **turun {self._fmt_price(abs(change_30))}** ({pct_30:.1f}%) dalam 30 hari."
                 else:
-                    change_text = "\n➡️ Harga diprediksi **stabil** dalam 30 hari."
+                    change_text = "\nHarga diprediksi **stabil** dalam 30 hari."
 
             # Confidence level based on interval width
             avg_range = (future_forecast["yhat_upper"] - future_forecast["yhat_lower"]).mean()
             avg_price = future_forecast["yhat"].mean()
             confidence_pct = max(0, 100 - (avg_range / avg_price * 100))
-            conf_label = "Tinggi ✅" if confidence_pct > 80 else "Sedang 🟡" if confidence_pct > 60 else "Rendah ⚠️"
+            conf_label = "Tinggi" if confidence_pct > 80 else "Sedang" if confidence_pct > 60 else "Rendah"
 
             result_text = (
-                f"## 🔮 Prediksi Harga {commodity}{loc_text}\n\n"
+                f"## Prediksi Harga {commodity}{loc_text}\n\n"
                 f"Model: **Prophet AI** | Horizon: **{periods} hari**\n\n"
             )
 
             if last_actual is not None:
-                result_text += f"### 📌 Harga Saat Ini\n- **{self._fmt_price(last_actual)}** (per {last_date.strftime('%d %B %Y')})\n\n"
+                result_text += f"### Harga Saat Ini\n- **{self._fmt_price(last_actual)}** (per {last_date.strftime('%d %B %Y')})\n\n"
 
             result_text += (
-                f"### 📊 Prediksi Harga\n"
+                f"### Prediksi Harga\n"
                 f"| Periode | Prediksi | Batas Bawah | Batas Atas |\n"
                 f"|---------|----------|-------------|------------|\n"
                 f"| 7 hari | {self._fmt_price(pred_7d['yhat'])} | {self._fmt_price(pred_7d['yhat_lower'])} | {self._fmt_price(pred_7d['yhat_upper'])} |\n"
@@ -811,10 +807,10 @@ class ChatbotEngine:
                 )
 
             result_text += (
-                f"\n### 📈 Ringkasan\n"
+                f"\n### Ringkasan\n"
                 f"- Tingkat kepercayaan: **{conf_label}** ({confidence_pct:.0f}%)\n"
                 f"{change_text}\n\n"
-                f"> ⚠️ *Prediksi ini menggunakan model Prophet. Hasil aktual dapat berbeda.*"
+                f"> *Prediksi ini menggunakan model Prophet. Hasil aktual dapat berbeda.*"
             )
 
             # Prepare chart data — combine historical + forecast
@@ -842,7 +838,7 @@ class ChatbotEngine:
         except Exception as e:
             logger.error(f"Forecast error: {e}", exc_info=True)
             return self._response(
-                f"⚠️ Terjadi error saat melakukan prediksi: `{e}`\n\n"
+                f"Prediksi gagal dihitung (`{e}`).\n\n"
                 f"Pastikan data **{commodity}**{loc_text} tersedia dan cukup."
             )
 
@@ -885,7 +881,7 @@ class ChatbotEngine:
             return self._handle_harga_terbaru(msg, commodity, provinces)
 
         return self._response(
-            "🤔 Maaf, saya belum memahami pertanyaan Anda.\n\n"
+            "Maaf, saya belum memahami pertanyaan Anda.\n\n"
             "Coba ajukan pertanyaan seperti:\n"
             "- *\"Berapa harga beras di Jakarta?\"*\n"
             "- *\"Prediksi harga cabai di Jakarta\"*\n"

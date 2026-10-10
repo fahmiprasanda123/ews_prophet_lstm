@@ -1,5 +1,5 @@
 """
-Price Narrative Analyzer — Generates detailed explanations for price predictions.
+Price Narrative Analyzer: Generates detailed explanations for price predictions.
 
 Analyzes why a predicted price is going up, down, or staying stable by
 examining seasonal patterns, weather effects, holiday impacts, historical
@@ -490,8 +490,7 @@ class PriceNarrativeAnalyzer:
 
         trend_parts = []
         for label, change in changes.items():
-            arrow = "↑" if change > 0 else ("↓" if change < 0 else "→")
-            trend_parts.append(f"{label} terakhir {arrow} {change:+.1f}%")
+            trend_parts.append(f"{label} terakhir {change:+.1f}%")
 
         description = "Tren harga terkini: " + "; ".join(trend_parts) + ". "
 
@@ -520,7 +519,7 @@ class PriceNarrativeAnalyzer:
             impact = 'low'
 
         return {
-            'name': '📈 Tren Harga Terkini',
+            'name': 'Tren Harga Terkini',
             'impact': impact,
             'description': description,
         }
@@ -626,7 +625,7 @@ class PriceNarrativeAnalyzer:
                 )
 
         return {
-            'name': '🌾 Faktor Musiman & Panen',
+            'name': 'Faktor Musiman & Panen',
             'impact': impact,
             'description': description,
         }
@@ -690,7 +689,7 @@ class PriceNarrativeAnalyzer:
         )
 
         return {
-            'name': '🌦️ Pengaruh Cuaca & Musim',
+            'name': 'Pengaruh Cuaca & Musim',
             'impact': impact,
             'description': description,
         }
@@ -737,7 +736,7 @@ class PriceNarrativeAnalyzer:
                 f"harga {commodity} saat ini."
             )
             return {
-                'name': '🕌 Efek Hari Raya',
+                'name': 'Efek Hari Raya',
                 'impact': 'low',
                 'description': description,
             }
@@ -778,7 +777,7 @@ class PriceNarrativeAnalyzer:
             impact = 'high'
 
         return {
-            'name': '🕌 Efek Hari Raya',
+            'name': 'Efek Hari Raya',
             'impact': impact,
             'description': description,
         }
@@ -816,7 +815,7 @@ class PriceNarrativeAnalyzer:
         description = (
             f"Berdasarkan data historis bulan {month_name}: "
             f"rata-rata Rp {hist_mean:,.0f}/kg, "
-            f"rentang Rp {hist_min:,.0f} — Rp {hist_max:,.0f}/kg, "
+            f"rentang Rp {hist_min:,.0f} s.d. Rp {hist_max:,.0f}/kg, "
             f"standar deviasi Rp {hist_std:,.0f}. "
             f"Harga prediksi Rp {predicted_price:,.0f}/kg "
         )
@@ -825,7 +824,7 @@ class PriceNarrativeAnalyzer:
             description += (
                 f"menyimpang SANGAT JAUH dari pola historis (z-score: {z_score:.1f}). "
                 "Ini merupakan ANOMALI BESAR yang mengindikasikan adanya "
-                "kejadian luar biasa di pasar — seperti gangguan pasokan besar, "
+                "kejadian luar biasa di pasar, seperti gangguan pasokan besar, "
                 "perubahan kebijakan, atau krisis."
             )
             impact = 'high'
@@ -849,7 +848,7 @@ class PriceNarrativeAnalyzer:
             impact = 'low'
 
         return {
-            'name': '📊 Anomali Historis',
+            'name': 'Anomali Historis',
             'impact': impact,
             'description': description,
         }
@@ -914,7 +913,7 @@ class PriceNarrativeAnalyzer:
             impact = 'low'
 
         return {
-            'name': '🗺️ Faktor Regional',
+            'name': 'Faktor Regional',
             'impact': impact,
             'description': description,
         }
@@ -987,17 +986,17 @@ class PriceNarrativeAnalyzer:
         if high_factors:
             narrative += "**Faktor-faktor UTAMA yang mendorong prediksi ini:**\n\n"
             for f in high_factors:
-                narrative += f"🔴 **{f['name']}**: {f['description']}\n\n"
+                narrative += f"- **{f['name']}**: {f['description']}\n\n"
 
         if medium_factors:
             narrative += "**Faktor pendukung:**\n\n"
             for f in medium_factors:
-                narrative += f"🟡 **{f['name']}**: {f['description']}\n\n"
+                narrative += f"- **{f['name']}**: {f['description']}\n\n"
 
         if low_factors:
             narrative += "**Faktor minor:**\n\n"
             for f in low_factors:
-                narrative += f"🟢 **{f['name']}**: {f['description']}\n\n"
+                narrative += f"- **{f['name']}**: {f['description']}\n\n"
 
         # Add conclusion
         if direction == 'NAIK':

@@ -1,5 +1,5 @@
 """
-Page 2: Regional Analysis — Indonesia Choropleth Map & Provincial Drill-down.
+Page 2: Regional Analysis: Indonesia Choropleth Map & Provincial Drill-down.
 """
 import streamlit as st
 import pandas as pd
@@ -14,10 +14,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.database import get_store
 
-st.set_page_config(page_title="Regional Analysis | Agri-AI EWS", page_icon="🗺️", layout="wide")
+st.set_page_config(page_title="Analisis Regional | Agri-AI EWS", page_icon="🌾", layout="wide")
 
 # --- Theme ---
-from theme import inject_theme_css, render_theme_toggle, theme_color, get_plotly_template, get_plotly_layout, get_plotly_yaxis, apply_theme_to_plotly
+from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, apply_theme_to_plotly, CHART, STATUS
 inject_theme_css()
 
 # Province name mapping: our data names → GeoJSON names
@@ -67,19 +67,19 @@ df = load_data()
 geojson = load_geojson()
 
 if df.empty:
-    st.error("❌ Data tidak tersedia.")
+    st.error("Belum ada data harga. Buka halaman utama untuk menjalankan sinkronisasi PIHPS, "
+             "atau letakkan food_prices_real.csv di folder proyek lalu muat ulang halaman.")
     st.stop()
 
 # --- Sidebar ---
-st.sidebar.title("🗺️ Regional Analysis")
+render_sidebar_brand("Analisis regional")
 render_theme_toggle()
-st.sidebar.markdown("---")
+st.sidebar.divider()
 selected_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), index=0)
-st.sidebar.markdown("---")
 
 # --- Main Content ---
-st.title("🗺️ Regional Analysis")
-st.markdown(f"### Analisis Harga **{selected_commodity}** Seluruh Indonesia")
+st.title("Analisis Regional")
+st.markdown(f"Harga **{selected_commodity}** terakhir di seluruh provinsi")
 
 # --- Choropleth Map ---
 if geojson is not None:
@@ -114,17 +114,15 @@ if geojson is not None:
         fig_map,
         height=500,
         margin=dict(l=0, r=0, t=30, b=0),
-        title=f"Peta Harga {selected_commodity} — Indonesia",
+        title=f"Peta harga {selected_commodity} di Indonesia",
     )
-    if hasattr(fig_map.data[0], "colorbar") and fig_map.data[0].colorbar is not None:
-        fig_map.data[0].colorbar.tickfont = dict(color=theme_color('text_secondary'))
-        fig_map.data[0].colorbar.title.font = dict(color=theme_color('text_primary'))
     st.plotly_chart(fig_map, use_container_width=True)
 else:
-    st.warning("⚠️ GeoJSON file not found. Install it at `assets/indonesia.geojson`.")
+    st.warning("Peta tidak bisa ditampilkan karena file batas provinsi belum ada. "
+               "Letakkan file GeoJSON di `assets/indonesia.geojson`, lalu muat ulang halaman.")
 
 # --- Price Disparity Analysis ---
-st.markdown("### 📊 Analisis Disparitas Harga")
+st.subheader("Disparitas harga antarprovinsi")
 
 latest_all = df[df['commodity'] == selected_commodity].groupby('province').last().reset_index()
 latest_all = latest_all.sort_values('price', ascending=False)
@@ -135,51 +133,50 @@ nat_avg = latest_all['price'].mean()
 nat_std = latest_all['price'].std()
 cv = (nat_std / nat_avg * 100) if nat_avg > 0 else 0
 
-col1.metric("Rata-rata Nasional", f"IDR {nat_avg:,.0f}/kg")
-col2.metric("Std Deviasi", f"IDR {nat_std:,.0f}")
-col3.metric("Coefficient of Variation", f"{cv:.1f}%", 
-            "Tinggi" if cv > 15 else ("Sedang" if cv > 8 else "Rendah"))
+col1.metric("Rata-rata nasional", f"IDR {nat_avg:,.0f}/kg")
+col2.metric("Simpangan baku", f"IDR {nat_std:,.0f}")
+col3.metric("Koefisien variasi", f"{cv:.1f}%")
+col3.caption("Disparitas " + ("tinggi (> 15%)" if cv > 15 else ("sedang (8-15%)" if cv > 8 else "rendah (< 8%)")))
 
 # Disparity bar chart
 col_a, col_b = st.columns([2, 1])
 
 with col_a:
-    colors = ['#FF4B4B' if p > nat_avg + nat_std else 
-              ('#FFA500' if p > nat_avg else '#00CC96') 
+    colors = [STATUS['danger']['bg'] if p > nat_avg + nat_std else
+              (STATUS['alert']['bg'] if p > nat_avg else STATUS['normal']['bg'])
               for p in latest_all['price']]
-    
+
     fig_bar = go.Figure(go.Bar(
         x=latest_all['province'], y=latest_all['price'],
         marker_color=colors,
         hovertemplate="<b>%{x}</b><br>IDR %{y:,.0f}/kg<extra></extra>",
     ))
-    fig_bar.add_hline(y=nat_avg, line_dash="dash", line_color=theme_color('plotly_hline'), opacity=0.5,
-                      annotation_text=f"Rata-rata: IDR {nat_avg:,.0f}",
-                      annotation_font_color=theme_color('text_primary'))
+    fig_bar.add_hline(y=nat_avg, line_dash="dash", line_color=CHART['reference'],
+                      annotation_text=f"Rata-rata: IDR {nat_avg:,.0f}")
     apply_theme_to_plotly(
         fig_bar, height=400,
-        title="Harga per Provinsi (merah = di atas rata-rata + 1σ)",
+        title="Harga per provinsi: merah > rata-rata + 1σ, oranye > rata-rata, hijau ≤ rata-rata",
     )
     fig_bar.update_xaxes(showgrid=False, tickangle=45)
     fig_bar.update_yaxes(title='Harga (IDR/kg)')
     st.plotly_chart(fig_bar, use_container_width=True)
 
 with col_b:
-    st.markdown("**🔴 Provinsi Termahal**")
+    st.markdown("**5 provinsi termahal**")
     for _, row in latest_all.head(5).iterrows():
         diff = (row['price'] - nat_avg) / nat_avg * 100
-        st.markdown(f"- **{row['province']}**: IDR {row['price']:,.0f} (+{diff:.1f}%)")
+        st.markdown(f"- **{row['province']}**: IDR {row['price']:,.0f} ({diff:+.1f}% dari rata-rata)")
 
-    st.markdown("**🟢 Provinsi Termurah**")
+    st.markdown("**5 provinsi termurah**")
     for _, row in latest_all.tail(5).iterrows():
         diff = (row['price'] - nat_avg) / nat_avg * 100
-        st.markdown(f"- **{row['province']}**: IDR {row['price']:,.0f} ({diff:.1f}%)")
+        st.markdown(f"- **{row['province']}**: IDR {row['price']:,.0f} ({diff:+.1f}% dari rata-rata)")
 
 # --- Provincial Drill-down ---
-st.markdown("---")
-st.markdown("### 🔍 Drill-Down Provinsi")
+st.divider()
+st.subheader("Rincian per provinsi")
 
-drill_province = st.selectbox("Pilih Provinsi untuk Analisis Detail", sorted(df['province'].unique()))
+drill_province = st.selectbox("Provinsi", sorted(df['province'].unique()))
 
 prov_series = df[(df['province'] == drill_province) & (df['commodity'] == selected_commodity)].sort_values('date')
 
@@ -191,19 +188,19 @@ if not prov_series.empty:
         fig_trend.add_trace(go.Scatter(
             x=prov_series['date'].tail(180), y=prov_series['price'].tail(180),
             mode='lines', name='Harga',
-            line=dict(color='#4facfe', width=2),
-            fill='tozeroy', fillcolor='rgba(79,172,254,0.1)',
+            line=dict(color=CHART['actual'], width=2),
         ))
         # Moving average
         ma30 = prov_series['price'].tail(180).rolling(30).mean()
         fig_trend.add_trace(go.Scatter(
             x=prov_series['date'].tail(180), y=ma30,
-            mode='lines', name='MA-30',
-            line=dict(color='#FFA500', width=2, dash='dash'),
+            mode='lines', name='Rata-rata bergerak 30 hari',
+            line=dict(color=CHART['forecast'], width=2, dash='dash'),
         ))
         apply_theme_to_plotly(
             fig_trend, height=350,
-            title=f"Tren Harga 180 Hari — {drill_province}",
+            title=f"Harga 180 hari terakhir di {drill_province}",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
         st.plotly_chart(fig_trend, use_container_width=True)
 
@@ -214,7 +211,7 @@ if not prov_series.empty:
             prov_all.sort_values('price', ascending=True), x='price', y='commodity',
             orientation='h', color='price', color_continuous_scale='Viridis',
             labels={'price': 'Harga (IDR/kg)', 'commodity': ''},
-            title=f"Semua Komoditas — {drill_province}",
+            title=f"Harga terakhir semua komoditas di {drill_province}",
         )
         apply_theme_to_plotly(
             fig_comm, height=350, showlegend=False,

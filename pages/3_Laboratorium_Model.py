@@ -1,5 +1,5 @@
 """
-Page 3: Model Laboratory — Model Comparison, Backtesting, and Analysis.
+Page 3: Model Laboratory: Model Comparison, Backtesting, and Analysis.
 """
 import streamlit as st
 import pandas as pd
@@ -13,10 +13,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.database import get_store
 
-st.set_page_config(page_title="Model Lab | Agri-AI EWS", page_icon="🔬", layout="wide")
+st.set_page_config(page_title="Laboratorium Model | Agri-AI EWS", page_icon="🌾", layout="wide")
 
 # --- Theme ---
-from theme import inject_theme_css, render_theme_toggle, theme_color, get_plotly_template, get_plotly_layout, get_plotly_yaxis, apply_theme_to_plotly
+from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, apply_theme_to_plotly, CHART, STATUS
 inject_theme_css()
 
 # --- Initialize Session State if not present ---
@@ -45,32 +45,33 @@ def load_data():
 
 df = load_data()
 if df.empty:
-    st.error("❌ Data tidak tersedia.")
+    st.error("Belum ada data harga. Buka halaman utama untuk menjalankan sinkronisasi PIHPS, "
+             "atau letakkan food_prices_real.csv di folder proyek lalu muat ulang halaman.")
     st.stop()
 
 # Sidebar
-st.sidebar.title("🔬 Model Laboratory")
+render_sidebar_brand("Laboratorium model")
 render_theme_toggle()
-st.sidebar.markdown("---")
+st.sidebar.divider()
 lab_province = st.sidebar.selectbox("Provinsi", sorted(df['province'].unique()), key="lab_prov", index=min(10, len(df['province'].unique())-1))
 lab_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), key="lab_comm", index=0)
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ Model Parameters")
+st.sidebar.divider()
+st.sidebar.subheader("Parameter model")
 
-with st.sidebar.expander("🔮 Prophet Config", expanded=False):
-    p_cps = st.slider("Changepoint Prior Scale", 0.001, 0.5, st.session_state.model_params['changepoint_prior_scale'], format="%.3f")
-    p_yearly = st.checkbox("Yearly Seasonality", st.session_state.model_params['yearly_seasonality'])
-    p_weekly = st.checkbox("Weekly Seasonality", st.session_state.model_params['weekly_seasonality'])
+with st.sidebar.expander("Prophet", expanded=False):
+    p_cps = st.slider("Changepoint prior scale", 0.001, 0.5, st.session_state.model_params['changepoint_prior_scale'], format="%.3f")
+    p_yearly = st.checkbox("Musiman tahunan", st.session_state.model_params['yearly_seasonality'])
+    p_weekly = st.checkbox("Musiman mingguan", st.session_state.model_params['weekly_seasonality'])
 
-with st.sidebar.expander("🧠 LSTM Config", expanded=False):
+with st.sidebar.expander("BiLSTM", expanded=False):
     l_epochs = st.number_input("Epoch maksimum (early stopping)", 5, 200, st.session_state.model_params['epochs'])
-    l_hidden = st.selectbox("Hidden Size", [32, 64, 128, 256], index=[32, 64, 128, 256].index(st.session_state.model_params['hidden_size']))
-    l_seq = st.slider("Sequence Length", 7, 60, st.session_state.model_params['seq_length'])
+    l_hidden = st.selectbox("Hidden size", [32, 64, 128, 256], index=[32, 64, 128, 256].index(st.session_state.model_params['hidden_size']))
+    l_seq = st.slider("Panjang sekuens (hari)", 7, 60, st.session_state.model_params['seq_length'])
 
-with st.sidebar.expander("⚡ TFT Config", expanded=False):
-    t_epochs = st.number_input("Max Epochs", 1, 50, st.session_state.model_params['tft_max_epochs'])
-    t_batch = st.selectbox("Batch Size", [16, 32, 64], index=[16, 32, 64].index(st.session_state.model_params['tft_batch_size']))
+with st.sidebar.expander("TFT", expanded=False):
+    t_epochs = st.number_input("Epoch maksimum", 1, 50, st.session_state.model_params['tft_max_epochs'])
+    t_batch = st.selectbox("Batch size", [16, 32, 64], index=[16, 32, 64].index(st.session_state.model_params['tft_batch_size']))
 
 # Update session state
 st.session_state.model_params = {
@@ -86,22 +87,25 @@ st.session_state.model_params = {
 
 model_params = st.session_state.model_params
 
-st.title("🔬 Model Laboratory")
-st.markdown("### Bandingkan performa model AI dan jalankan backtesting")
+# Nilai terbaik per kolom: chip padat yang terbaca di kedua tema
+BEST_CELL = f"background-color: {STATUS['normal']['bg']}; color: {STATUS['normal']['fg']}; font-weight: 600;"
 
-tab1, tab2, tab3 = st.tabs(["📊 Model Comparison", "🔄 Backtesting", "📈 Variable Importance"])
+st.title("Laboratorium Model")
+st.markdown("Bandingkan akurasi model pada data uji dan jalankan backtesting walk-forward.")
+
+tab1, tab2, tab3 = st.tabs(["Perbandingan model", "Backtesting", "Variabel berpengaruh"])
 
 # --- Tab 1: Model Comparison ---
 with tab1:
-    st.markdown(f"**{lab_commodity}** di **{lab_province}** — split 80/20 + rolling-origin (horizon 30 hari)")
+    st.markdown(f"**{lab_commodity}** di **{lab_province}**, split 80/20 + rolling-origin (horizon 30 hari)")
     st.caption(
         "Protokol sama dengan skrip tesis (scripts/thesis_outputs.py): setiap model hanya memakai data "
-        "sebelum titik asal, semua prediksi disejajarkan per tanggal, dan bobot Smart Ensemble dicari "
+        "sebelum titik asal, semua prediksi disejajarkan per tanggal, dan bobot ensemble dicari "
         "dengan grid search pada periode validasi (20% terakhir data latih)."
     )
     use_cov = st.checkbox("Gunakan kovariat iklim nyata (Open-Meteo & NOAA)", value=True, key="lab_cov")
 
-    if st.button("🚀 Jalankan Perbandingan Model", key="run_compare"):
+    if st.button("Jalankan perbandingan model", key="run_compare"):
         from models.evaluation_protocol import evaluate_series, load_climate_covariates, prepare_series
 
         lab_config = {
@@ -141,7 +145,7 @@ with tab1:
         for note in result['notes']:
             st.warning(note)
 
-        st.markdown("### 📋 Tabel Perbandingan Metrik")
+        st.subheader("Perbandingan metrik")
         metrics_df = result['metrics']
         display_cols = ['Model', 'RMSE', 'MAE', 'MAPE (%)', 'SMAPE (%)', 'R²',
                         'Directional Accuracy (%)', 'Kategori MAPE']
@@ -149,13 +153,13 @@ with tab1:
             metrics_df[display_cols].style.format({
                 'RMSE': '{:,.0f}', 'MAE': '{:,.0f}', 'MAPE (%)': '{:.2f}', 'SMAPE (%)': '{:.2f}',
                 'R²': '{:.3f}', 'Directional Accuracy (%)': '{:.1f}',
-            }).highlight_min(subset=['RMSE', 'MAE', 'MAPE (%)', 'SMAPE (%)'], color='#00CC96')
-              .highlight_max(subset=['R²', 'Directional Accuracy (%)'], color='#00CC96'),
+            }).highlight_min(subset=['RMSE', 'MAE', 'MAPE (%)', 'SMAPE (%)'], props=BEST_CELL)
+              .highlight_max(subset=['R²', 'Directional Accuracy (%)'], props=BEST_CELL),
             use_container_width=True,
         )
         best = metrics_df.loc[metrics_df['MAPE (%)'].idxmin()]
-        st.success(f"🏆 MAPE terendah: **{best['Model']}** ({best['MAPE (%)']:.2f}%, kategori {best['Kategori MAPE']})")
-        st.caption("Directional Accuracy dihitung terhadap harga terakhir di titik asal. "
+        st.success(f"MAPE terendah: **{best['Model']}** ({best['MAPE (%)']:.2f}%, kategori {best['Kategori MAPE']})")
+        st.caption("Sel hijau menandai nilai terbaik per kolom. Directional Accuracy dihitung terhadap harga terakhir di titik asal. "
                    "Kategori MAPE mengikuti Lewis (1982).")
 
         if result['ensemble']:
@@ -169,53 +173,56 @@ with tab1:
                 f"({ens_info['fallback_rate']:.1f}%)."
             )
 
-        st.markdown("### 📉 Prediksi vs Aktual (Test Set)")
+        st.subheader("Prediksi vs aktual pada data uji")
         pf = predictions_frame(result)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=pf.index, y=pf['aktual'], mode='lines', name='Aktual',
-                                 line=dict(color=theme_color('plotly_actual_line'), width=3)))
-        colors = {'Naive Seasonal': '#888888', 'SMA-30': '#A0A0A0', 'ARIMA(5,1,0)': '#C0C0C0',
-                  'Prophet': '#4facfe', 'BiLSTM': '#FFA500', 'TFT': '#FF4B4B', 'Smart Ensemble': '#00CC96'}
-        for name, color in colors.items():
+                                 line=dict(color=CHART['actual'], width=3)))
+        # Baseline abu-abu dibedakan lewat pola garis; model utama memakai warna grafik DESIGN.md
+        styles = {'Naive Seasonal': (CHART['reference'], 'dot'), 'SMA-30': (CHART['reference'], 'dash'),
+                  'ARIMA(5,1,0)': (CHART['reference'], 'dashdot'), 'Prophet': (CHART['compare'], 'dot'),
+                  'BiLSTM': (CHART['forecast'], 'dot'), 'TFT': (CHART['target'], 'dot'),
+                  'Smart Ensemble': (STATUS['normal']['bg'], 'solid')}
+        for name, (color, dash) in styles.items():
             if name in pf.columns:
                 fig.add_trace(go.Scatter(x=pf.index, y=pf[name], mode='lines', name=name,
-                                         line=dict(color=color, width=2, dash='dot')))
+                                         line=dict(color=color, width=2, dash=dash)))
         for origin in sorted(set(pf['titik_asal'])):
             fig.add_vline(x=origin, line_width=0.5, line_color='rgba(128,128,128,0.35)')
         apply_theme_to_plotly(fig, height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02))
         fig.update_yaxes(title='Harga (IDR/kg)')
         st.plotly_chart(fig, use_container_width=True)
 
-        st.markdown("### ⏱️ MAPE menurut Horizon Prediksi")
+        st.subheader("MAPE menurut horizon prediksi")
         st.dataframe(result['horizon_mape'].style.format(precision=2), use_container_width=True)
         if not result['intervals'].empty:
-            st.markdown("### 🎯 Cakupan Interval Ketidakpastian")
+            st.subheader("Cakupan interval ketidakpastian")
             st.dataframe(result['intervals'].style.format(precision=2), use_container_width=True)
         st.download_button(
-            "⬇️ Unduh prediksi per tanggal (CSV)", pf.to_csv().encode('utf-8'),
+            "Unduh prediksi per tanggal (CSV)", pf.to_csv().encode('utf-8'),
             file_name=f"prediksi_{lab_commodity}_{lab_province}.csv".replace(' ', '_'), mime='text/csv',
         )
     else:
-        st.info("👆 Klik tombol di atas untuk menjalankan perbandingan model.")
+        st.info("Belum ada hasil untuk kombinasi ini. Tekan \"Jalankan perbandingan model\" untuk melatih dan menguji semua model; prosesnya bisa beberapa menit.")
 
 # --- Tab 2: Backtesting ---
 with tab2:
-    st.markdown(f"### Walk-Forward Backtesting — {lab_commodity} di {lab_province}")
-    st.markdown("Menguji performa model pada data historis dengan sliding window.")
+    st.subheader(f"Backtesting walk-forward: {lab_commodity} di {lab_province}")
+    st.markdown("Menguji model pada data historis dengan jendela geser.")
 
     bc1, bc2, bc3 = st.columns(3)
-    train_window = bc1.number_input("Training Window (hari)", 90, 365, 180)
-    test_window = bc2.number_input("Test Window (hari)", 7, 60, 30)
-    step_size = bc3.number_input("Step Size (hari)", 7, 60, 30)
+    train_window = bc1.number_input("Jendela latih (hari)", 90, 365, 180)
+    test_window = bc2.number_input("Jendela uji (hari)", 7, 60, 30)
+    step_size = bc3.number_input("Langkah geser (hari)", 7, 60, 30)
 
-    bt_model = st.selectbox("Model untuk Backtest", ["naive", "sma", "arima", "prophet", "lstm", "tft", "ensemble"])
+    bt_model = st.selectbox("Model", ["naive", "sma", "arima", "prophet", "lstm", "tft", "ensemble"])
 
-    if st.button("🔄 Jalankan Backtesting", key="run_bt"):
+    if st.button("Jalankan backtesting", key="run_bt"):
         from engine.backtester import Backtester
         bt = Backtester(df)
 
-        st.info(f"⚙️ Backtesting with: {bt_model.upper()} | Params: {model_params}")
-        with st.spinner("Backtesting sedang berjalan... Ini bisa memakan waktu beberapa menit."):
+        st.caption(f"Model: {bt_model.upper()}. Parameter: {model_params}")
+        with st.spinner("Backtesting berjalan. Prosesnya bisa beberapa menit."):
             results = bt.walk_forward_test(
                 lab_province, lab_commodity,
                 train_window=train_window, test_window=test_window,
@@ -227,10 +234,10 @@ with tab2:
             summary = bt.get_summary(results)
 
             sc1, sc2, sc3, sc4 = st.columns(4)
-            sc1.metric("Total Folds", summary['folds'])
-            sc2.metric("Avg MAPE", f"{summary['avg_mape']:.2f}%")
-            sc3.metric("Avg RMSE", f"{summary['avg_rmse']:,.0f}")
-            sc4.metric("Avg R²", f"{summary['avg_r2']:.4f}")
+            sc1.metric("Jumlah fold", summary['folds'])
+            sc2.metric("Rata-rata MAPE", f"{summary['avg_mape']:.2f}%")
+            sc3.metric("Rata-rata RMSE", f"{summary['avg_rmse']:,.0f}")
+            sc4.metric("Rata-rata R²", f"{summary['avg_r2']:.4f}")
 
             # MAPE per fold chart
             fold_mapes = [r['metrics']['MAPE (%)'] for r in results]
@@ -238,15 +245,14 @@ with tab2:
 
             fig_bt = go.Figure(go.Bar(
                 x=fold_labels, y=fold_mapes,
-                marker_color=['#00CC96' if m < 10 else '#FFA500' if m < 20 else '#FF4B4B' for m in fold_mapes],
+                marker_color=[STATUS['normal']['bg'] if m < 10 else STATUS['alert']['bg'] if m < 20 else STATUS['danger']['bg'] for m in fold_mapes],
                 text=[f"{m:.1f}%" for m in fold_mapes], textposition='auto',
             ))
-            fig_bt.add_hline(y=summary['avg_mape'], line_dash="dash", line_color=theme_color('plotly_hline'),
-                            annotation_text=f"Avg: {summary['avg_mape']:.1f}%",
-                            annotation_font_color=theme_color('text_primary'))
+            fig_bt.add_hline(y=summary['avg_mape'], line_dash="dash", line_color=CHART['reference'],
+                            annotation_text=f"Rata-rata: {summary['avg_mape']:.1f}%")
             apply_theme_to_plotly(
                 fig_bt, height=400,
-                title="MAPE per Fold",
+                title="MAPE per fold: hijau < 10%, oranye 10-20%, merah > 20%",
             )
             fig_bt.update_yaxes(title='MAPE (%)')
             st.plotly_chart(fig_bt, use_container_width=True)
@@ -254,37 +260,37 @@ with tab2:
             # Actual vs Predicted overlay for best fold
             best = results[summary['best_fold']]
             fig_best = go.Figure()
-            fig_best.add_trace(go.Scatter(y=best['actuals'], name='Actual', line=dict(color=theme_color('plotly_actual_line'), width=2)))
-            fig_best.add_trace(go.Scatter(y=best['predictions'], name='Predicted', line=dict(color='#4facfe', width=2, dash='dot')))
+            fig_best.add_trace(go.Scatter(y=best['actuals'], name='Aktual', line=dict(color=CHART['actual'], width=2)))
+            fig_best.add_trace(go.Scatter(y=best['predictions'], name='Prediksi', line=dict(color=CHART['forecast'], width=2, dash='dot')))
             apply_theme_to_plotly(
                 fig_best, height=350,
-                title=f"Best Fold ({best['test_start']} → {best['test_end']}) — MAPE: {best['metrics']['MAPE (%)']:.2f}%",
+                title=f"Fold terbaik ({best['test_start']} s.d. {best['test_end']}), MAPE {best['metrics']['MAPE (%)']:.2f}%",
             )
             st.plotly_chart(fig_best, use_container_width=True)
 
             # EWS accuracy test
-            st.markdown("### 🔔 Akurasi Deteksi EWS")
+            st.subheader("Akurasi deteksi EWS")
             st.caption("Skenario prediksi sempurna (hindsight): harga aktual masa depan dipakai sebagai "
                        "prediksi. Angka ini batas atas kemampuan logika skor EWS, bukan kinerja model prediksi.")
-            with st.spinner("Testing EWS alert accuracy..."):
+            with st.spinner("Menguji akurasi peringatan EWS..."):
                 from engine.ews_engine_v2 import EWSEngineV2
                 ews = EWSEngineV2(df)
                 ews_acc = bt.test_ews_accuracy(lab_province, lab_commodity, ews)
 
             ec1, ec2, ec3 = st.columns(3)
-            ec1.metric("Detection Rate", f"{ews_acc['detection_rate']:.1f}%")
-            ec2.metric("Total Spikes Found", ews_acc['total_spikes'])
-            ec3.metric("Avg Lead Time", f"{ews_acc['avg_lead_time']:.0f} hari")
+            ec1.metric("Tingkat deteksi", f"{ews_acc['detection_rate']:.1f}%")
+            ec2.metric("Lonjakan ditemukan", ews_acc['total_spikes'])
+            ec3.metric("Rata-rata waktu tenggang", f"{ews_acc['avg_lead_time']:.0f} hari")
 
             if ews_acc.get('events'):
                 st.dataframe(pd.DataFrame(ews_acc['events']), use_container_width=True)
         else:
-            st.warning("Tidak cukup data untuk backtesting dengan parameter ini.")
+            st.warning("Data tidak cukup untuk backtesting dengan parameter ini. Perkecil jendela latih atau jendela uji.")
 
 # --- Tab 3: Variable Importance ---
 with tab3:
-    st.markdown("### 📊 Analisis Variabel Penting")
-    st.markdown("Faktor-faktor yang paling berpengaruh terhadap prediksi harga.")
+    st.subheader("Variabel yang paling berkaitan dengan harga")
+    st.markdown("Korelasi absolut antara harga dan fitur lag, waktu, serta komoditas lain.")
 
     # Since TFT variable importance requires a trained model,
     # show feature analysis from data instead
@@ -319,8 +325,8 @@ with tab3:
             x=[abs(f[1]) for f in sorted_features],
             orientation='h',
             marker_color=[
-                '#4facfe' if f[0].startswith('Lag') else
-                '#FFA500' if f[0].startswith('Corr') else '#00CC96'
+                CHART['compare'] if f[0].startswith('Lag') else
+                CHART['forecast'] if f[0].startswith('Corr') else CHART['actual']
                 for f in sorted_features
             ],
             text=[f"{abs(f[1]):.3f}" for f in sorted_features],
@@ -328,17 +334,17 @@ with tab3:
         ))
         apply_theme_to_plotly(
             fig_imp, height=max(300, len(sorted_features) * 30),
-            title="Feature Importance (Absolute Correlation)",
+            title="Korelasi absolut: biru = lag, oranye = komoditas lain, hijau = waktu",
         )
         fig_imp.update_xaxes(title='|Correlation|')
         fig_imp.update_yaxes(autorange='reversed')
         st.plotly_chart(fig_imp, use_container_width=True)
 
         st.markdown("""
-        > **Interpretasi**: 
-        > - 🔵 **Lag features**: Autokorelasi harga — seberapa tergantung harga hari ini pada harga sebelumnya
-        > - 🟠 **Cross-commodity**: Korelasi dengan komoditas lain — mengindikasikan hubungan supply chain
-        > - 🟢 **Temporal**: Pengaruh waktu (bulan, hari) — mengindikasikan pola musiman
+        > **Interpretasi**
+        > - **Lag (biru)**: autokorelasi harga, yaitu seberapa besar harga hari ini bergantung pada harga sebelumnya.
+        > - **Komoditas lain (oranye)**: korelasi dengan komoditas lain, petunjuk adanya hubungan rantai pasok.
+        > - **Waktu (hijau)**: pengaruh bulan dan hari, petunjuk pola musiman.
         """)
     else:
-        st.warning("Tidak cukup data untuk analisis variabel.")
+        st.warning("Data seri ini kurang dari 60 hari, belum cukup untuk analisis variabel.")

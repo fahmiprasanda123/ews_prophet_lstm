@@ -42,10 +42,10 @@ class SupplyRiskScorer:
         ].sort_values('date')
         
         recent_change = 0
-        trend = "— Insufficient data"
+        trend = "Data belum cukup"
         if len(series) >= 7:
             recent_change = (series['price'].iloc[-1] - series['price'].iloc[-7]) / series['price'].iloc[-7] * 100
-            trend = "↑ Upward" if recent_change > 2 else ("↓ Downward" if recent_change < -2 else "→ Stable")
+            trend = "Naik" if recent_change > 2 else ("Turun" if recent_change < -2 else "Stabil")
 
         return {
             'score': round(composite, 1),
