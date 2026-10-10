@@ -77,7 +77,7 @@ class TestSupplyRiskScorer:
 
     def test_trend_direction_labels(self):
         result = self.scorer.calculate_risk_score('DKI Jakarta', 'Beras')
-        valid_trends = ['↑ Upward', '↓ Downward', '→ Stable', '— Insufficient data']
+        valid_trends = ['Naik', 'Turun', 'Stabil', 'Data belum cukup']
         assert result['trend_direction'] in valid_trends
 
     def test_description_matches_score(self):
