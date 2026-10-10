@@ -1,5 +1,5 @@
 """
-Page 6: Interactive Chatbot — Ask questions about food prices in natural language.
+Page 6: Interactive Chatbot: Ask questions about food prices in natural language.
 """
 import streamlit as st
 import plotly.graph_objects as go
@@ -12,64 +12,11 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from engine.chatbot_engine import ChatbotEngine
 
-st.set_page_config(page_title="Chatbot | Agri-AI EWS", page_icon="💬", layout="wide")
+st.set_page_config(page_title="Chatbot | Agri-AI EWS", page_icon="🌾", layout="wide")
 
 # --- Theme ---
-from theme import inject_theme_css, render_theme_toggle, theme_color, get_plotly_template, get_plotly_layout, apply_theme_to_plotly
+from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, render_footer, apply_theme_to_plotly, CHART
 inject_theme_css()
-
-# --- Additional Chatbot CSS ---
-st.markdown(f"""
-<style>
-    /* Chat container */
-    .chat-header {{
-        background: var(--accent-bg);
-        border: 1px solid var(--accent-border);
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 20px;
-        text-align: center;
-    }}
-    .chat-header h2 {{
-        color: var(--accent);
-        margin: 0 0 8px 0;
-    }}
-    .chat-header p {{
-        color: var(--text-secondary);
-        margin: 0;
-        font-size: 0.95rem;
-    }}
-
-    /* Quick action buttons */
-    .quick-actions {{
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 16px 0;
-        justify-content: center;
-    }}
-
-    /* Streamlit chat message styling */
-    [data-testid="stChatMessage"] {{
-        background: {theme_color('chat_msg_bg')} !important;
-        border: 1px solid {theme_color('chat_msg_border')};
-        border-radius: 12px !important;
-        margin-bottom: 8px;
-    }}
-
-    /* Status badge */
-    .status-badge {{
-        display: inline-block;
-        padding: 3px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        background: rgba(0, 200, 83, 0.15);
-        color: #00c853;
-        border: 1px solid rgba(0, 200, 83, 0.3);
-    }}
-</style>
-""", unsafe_allow_html=True)
 
 # --- Initialize ---
 @st.cache_resource
@@ -85,13 +32,11 @@ if "pending_quick_action" not in st.session_state:
     st.session_state.pending_quick_action = None
 
 # --- Sidebar ---
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2534/2534044.png", width=60)
-st.sidebar.title("💬 Agri-AI Chatbot")
-st.sidebar.caption("Asisten virtual harga pangan")
+render_sidebar_brand("Chatbot harga pangan")
 render_theme_toggle()
-st.sidebar.markdown("---")
+st.sidebar.divider()
 
-st.sidebar.markdown("### 💡 Contoh Pertanyaan")
+st.sidebar.markdown("**Contoh pertanyaan**")
 example_questions = [
     "Berapa harga beras di Jakarta?",
     "Prediksi harga cabai di Jakarta",
@@ -103,36 +48,28 @@ example_questions = [
 for q in example_questions:
     st.sidebar.markdown(f"- *{q}*")
 
-st.sidebar.markdown("---")
-if st.sidebar.button("🗑️ Hapus Riwayat Chat", use_container_width=True):
+st.sidebar.divider()
+if st.sidebar.button("Hapus riwayat chat", use_container_width=True,
+                     disabled=not st.session_state.chat_messages):
     st.session_state.chat_messages = []
     st.rerun()
 
-st.sidebar.markdown("---")
-st.sidebar.markdown(
-    '<span class="status-badge">● Online</span> &nbsp; Chatbot aktif',
-    unsafe_allow_html=True,
-)
-
 # --- Header ---
-st.markdown("""
-<div class="chat-header">
-    <h2>💬 Agri-AI Chatbot</h2>
-    <p>Tanyakan apa saja tentang harga pangan Indonesia — harga terbaru, <strong>prediksi AI</strong>, tren, statistik, dan perbandingan antar provinsi.</p>
-</div>
-""", unsafe_allow_html=True)
+st.title("Chatbot harga pangan")
+st.markdown("Tanyakan harga terbaru, prediksi, tren, statistik, atau perbandingan antarprovinsi. "
+            "Jawaban dihitung dari data PIHPS dengan aturan, bukan model bahasa.")
 
 # --- Quick Action Buttons ---
 if not st.session_state.chat_messages:
-    st.markdown("#### 🚀 Mulai dengan pertanyaan cepat:")
+    st.markdown("**Mulai dengan salah satu pertanyaan ini**")
     quick_cols = st.columns(3)
     quick_actions = [
-        ("💰 Harga Terbaru", "Berapa harga terbaru semua komoditas?"),
-        ("🔮 Prediksi Beras", "Prediksi harga beras di DKI Jakarta"),
-        ("🔮 Prediksi Cabai", "Prediksi harga cabai merah di Jawa Timur"),
-        ("📈 Tren Cabai", "Bagaimana tren harga cabai merah?"),
-        ("📊 Statistik Beras", "Statistik harga beras"),
-        ("🔄 Bandingkan", "Bandingkan harga beras Jakarta dan Jawa Barat"),
+        ("Harga terbaru", "Berapa harga terbaru semua komoditas?"),
+        ("Prediksi beras", "Prediksi harga beras di DKI Jakarta"),
+        ("Prediksi cabai", "Prediksi harga cabai merah di Jawa Timur"),
+        ("Tren cabai", "Bagaimana tren harga cabai merah?"),
+        ("Statistik beras", "Statistik harga beras"),
+        ("Bandingkan provinsi", "Bandingkan harga beras Jakarta dan Jawa Barat"),
     ]
     for i, (label, query) in enumerate(quick_actions):
         col = quick_cols[i % 3]
@@ -140,7 +77,7 @@ if not st.session_state.chat_messages:
             st.session_state.pending_quick_action = query
             st.rerun()
 
-    st.markdown("---")
+    st.divider()
 
 # --- Helper Functions (defined before use) ---
 def _render_chart(chart_data, chart_type, chart_title):
@@ -155,7 +92,6 @@ def _render_chart(chart_data, chart_type, chart_title):
             y="price",
             color="province",
             title=chart_title,
-            template=get_plotly_template(),
         )
     elif chart_type == "forecast":
         fig = go.Figure()
@@ -176,7 +112,7 @@ def _render_chart(chart_data, chart_type, chart_title):
             fig.add_trace(go.Scatter(
                 x=hist_data["date"], y=hist_data["price"],
                 mode="lines+markers", name="Historis",
-                line=dict(color="#4facfe", width=2),
+                line=dict(color=CHART["actual"], width=2),
                 marker=dict(size=3),
             ))
 
@@ -185,23 +121,23 @@ def _render_chart(chart_data, chart_type, chart_title):
             # Upper bound (invisible line for fill)
             fig.add_trace(go.Scatter(
                 x=pred_data["date"], y=pred_data["upper"],
-                mode="lines", name="Batas Atas",
+                mode="lines", name="Batas atas",
                 line=dict(width=0),
                 showlegend=False,
             ))
             # Lower bound with fill to upper
             fig.add_trace(go.Scatter(
                 x=pred_data["date"], y=pred_data["lower"],
-                mode="lines", name="Confidence Interval",
+                mode="lines", name="Interval prediksi",
                 line=dict(width=0),
                 fill="tonexty",
-                fillcolor="rgba(255, 165, 0, 0.15)",
+                fillcolor="rgba(168,106,16,0.15)",
             ))
             # Prediction line
             fig.add_trace(go.Scatter(
                 x=pred_data["date"], y=pred_data["price"],
                 mode="lines+markers", name="Prediksi",
-                line=dict(color="#FFA500", width=2, dash="dot"),
+                line=dict(color=CHART["forecast"], width=2, dash="dot"),
                 marker=dict(size=3),
             ))
 
@@ -222,7 +158,12 @@ def _process_and_store(user_input: str):
     st.session_state.chat_messages.append({"role": "user", "content": user_input})
 
     # Get bot response
-    response = bot.process(user_input)
+    try:
+        response = bot.process(user_input)
+    except Exception as e:
+        response = {"text": "Maaf, pertanyaan ini gagal diproses. Coba tulis ulang dengan menyebut "
+                            "komoditas dan provinsi, misalnya \"harga beras di Jawa Barat\". "
+                            f"(Detail teknis: {type(e).__name__})"}
 
     # Store bot message
     bot_msg = {"role": "assistant", "content": response["text"]}
@@ -235,7 +176,7 @@ def _process_and_store(user_input: str):
 
 # --- Render Chat History ---
 for message in st.session_state.chat_messages:
-    with st.chat_message(message["role"], avatar="🧑‍💻" if message["role"] == "user" else "🤖"):
+    with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
         # Render chart if present
@@ -250,16 +191,10 @@ if st.session_state.pending_quick_action:
     st.rerun()
 
 # Chat input
-if user_input := st.chat_input("Tanyakan tentang harga pangan... 🌾"):
+if user_input := st.chat_input("Tulis pertanyaan, misalnya: harga cabai rawit di Bali"):
     _process_and_store(user_input)
     st.rerun()
 
 # --- Footer ---
-st.markdown("---")
-st.markdown("""
-<div class="theme-footer">
-    <div>AGRI-AI CHATBOT v1.0</div>
-    <div>RULE-BASED + DATA-DRIVEN</div>
-    <div>© 2026 Fahmi Prasanda</div>
-</div>
-""", unsafe_allow_html=True)
+st.divider()
+render_footer("Chatbot berbasis aturan dan data PIHPS", "© 2026 Fahmi Prasanda")

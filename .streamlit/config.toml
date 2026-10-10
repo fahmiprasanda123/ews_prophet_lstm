@@ -1,2 +1,27 @@
 [client]
-showErrorDetails = true
+# Detail error hanya untuk pengembangan; pengguna melihat pesan ramah dari aplikasi.
+showErrorDetails = false
+
+# Warna dan font mengikuti DESIGN.md. Dengan [theme.light] dan [theme.dark],
+# tema mengikuti sistem pengguna dan bisa diganti lewat menu Settings,
+# sehingga tabel, input, dan grafik bawaan Streamlit ikut berganti.
+[theme]
+base = "light"
+font = "IBM Plex Sans:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+baseRadius = "small"
+# Batas input minimal 3:1 terhadap latar (WCAG 1.4.11).
+showWidgetBorder = true
+
+[theme.light]
+primaryColor = "#2E6B3F"
+backgroundColor = "#F7F6F2"
+secondaryBackgroundColor = "#ECEAE3"
+textColor = "#1C2421"
+borderColor = "#767D77"
+
+[theme.dark]
+primaryColor = "#7FBF8E"
+backgroundColor = "#121613"
+secondaryBackgroundColor = "#1C221E"
+textColor = "#E6EBE5"
+borderColor = "#6F7A73"

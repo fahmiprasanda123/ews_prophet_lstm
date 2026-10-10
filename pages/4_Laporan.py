@@ -1,5 +1,5 @@
 """
-Page 4: Reports — PDF and Excel Export.
+Page 4: Reports: PDF and Excel Export.
 """
 import streamlit as st
 import pandas as pd
@@ -12,10 +12,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.database import get_store
 
-st.set_page_config(page_title="Reports | Agri-AI EWS", page_icon="📋", layout="wide")
+st.set_page_config(page_title="Laporan | Agri-AI EWS", page_icon="🌾", layout="wide")
 
 # --- Theme ---
-from theme import inject_theme_css, render_theme_toggle, theme_color
+from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, status_chip, EWS_LEVEL_STATUS, EWS_LEVEL_LABEL
 inject_theme_css()
 
 @st.cache_data
@@ -31,34 +31,28 @@ def load_data():
 
 df = load_data()
 if df.empty:
-    st.error("❌ Data tidak tersedia.")
+    st.error("Belum ada data harga. Buka halaman utama untuk menjalankan sinkronisasi PIHPS, "
+             "atau letakkan food_prices_real.csv di folder proyek lalu muat ulang halaman.")
     st.stop()
 
 # Sidebar
-st.sidebar.title("📋 Reports")
+render_sidebar_brand("Laporan")
 render_theme_toggle()
-st.sidebar.markdown("---")
+st.sidebar.divider()
 rpt_province = st.sidebar.selectbox("Provinsi", sorted(df['province'].unique()), key="rpt_prov", index=min(10, len(df['province'].unique())-1))
 rpt_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), key="rpt_comm", index=0)
 
-st.title("📋 Report Generator")
-st.markdown("### Generate laporan analisis untuk download")
+st.title("Laporan")
+st.markdown(f"Laporan untuk **{rpt_commodity}** di **{rpt_province}**. Ganti provinsi dan komoditas di sidebar.")
 
-st.markdown(f"""
-<div class="theme-card">
-    <strong>Target Laporan:</strong> {rpt_commodity} di {rpt_province}
-</div>
-""", unsafe_allow_html=True)
-
-tab1, tab2, tab3 = st.tabs(["📄 PDF Report", "📊 Excel Export", "📈 Data Preview"])
+tab1, tab2, tab3 = st.tabs(["Laporan PDF", "Ekspor Excel", "Pratinjau data"])
 
 # --- Tab 1: PDF Report ---
 with tab1:
-    st.markdown("### 📄 Laporan PDF Lengkap")
-    st.markdown("Generate laporan profesional dengan analisis EWS, prediksi harga, dan rekomendasi tindakan.")
+    st.markdown("Berisi status EWS, prakiraan harga 30 hari (Prophet), risiko pasokan, metrik akurasi, dan rekomendasi tindakan.")
 
-    if st.button("🚀 Generate PDF Report", key="gen_pdf"):
-        with st.spinner("Generating report..."):
+    if st.button("Buat laporan PDF", key="gen_pdf"):
+        with st.spinner("Melatih Prophet dan menyusun laporan PDF..."):
             try:
                 from engine.ews_engine_v2 import EWSEngineV2
                 from engine.supply_risk import SupplyRiskScorer
@@ -81,10 +75,11 @@ with tab1:
 
                 forecast = fp.train_and_forecast(rpt_province, rpt_commodity, periods=30)
                 predicted_price = forecast['yhat'].iloc[-1]
+                target_date = forecast['ds'].iloc[-1]
 
                 # EWS
                 ews = EWSEngineV2(df)
-                ews_result = ews.calculate_composite_score(rpt_province, rpt_commodity, predicted_price)
+                ews_result = ews.calculate_composite_score(rpt_province, rpt_commodity, predicted_price, target_date)
 
                 # Supply Risk
                 scorer = SupplyRiskScorer(df)
@@ -94,8 +89,7 @@ with tab1:
                 from engine.price_narrative import PriceNarrativeAnalyzer
                 narrator = PriceNarrativeAnalyzer(df)
                 narrative_result = narrator.generate_narrative(
-                    rpt_province, rpt_commodity, predicted_price,
-                    datetime.datetime.now()
+                    rpt_province, rpt_commodity, predicted_price, target_date
                 )
 
                 # Generate PDF
@@ -109,67 +103,70 @@ with tab1:
                     ews_result=ews_result,
                     supply_risk=supply_risk,
                     metrics=metrics,
-                    forecast_date=datetime.datetime.now().strftime('%d %B %Y'),
+                    forecast_date=target_date,
                 )
 
-                st.success("✅ Report generated successfully!")
+                st.success("Laporan PDF siap diunduh.")
                 st.download_button(
-                    label="⬇️ Download PDF Report",
+                    label="Unduh laporan PDF",
                     data=pdf_bytes,
                     file_name=f"EWS_Report_{rpt_province}_{rpt_commodity}_{datetime.datetime.now().strftime('%Y%m%d')}.pdf",
                     mime="application/pdf",
                 )
 
                 # Preview
-                st.markdown("---")
-                st.markdown("### Preview")
+                st.divider()
+                st.subheader("Ringkasan isi laporan")
                 pc1, pc2 = st.columns(2)
-                pc1.metric("EWS Level", ews_result['level'])
-                pc2.metric("EWS Score", f"{ews_result['score']}/100")
+                pc1.markdown("Status EWS<br>" + status_chip(EWS_LEVEL_LABEL.get(ews_result['level'], ews_result['level']),
+                                                              EWS_LEVEL_STATUS.get(ews_result['level'], 'neutral')),
+                             unsafe_allow_html=True)
+                pc2.metric("Skor EWS", f"{ews_result['score']}/100")
 
                 pc3, pc4 = st.columns(2)
-                pc3.metric("Harga Saat Ini", f"IDR {current_price:,.0f}")
-                pc4.metric("Harga Prediksi", f"IDR {predicted_price:,.0f}")
+                pc3.metric("Harga saat ini", f"IDR {current_price:,.0f}")
+                pc4.metric(f"Harga prediksi {target_date:%d-%m-%Y}", f"IDR {predicted_price:,.0f}")
 
                 # Narrative Preview
                 if narrative_result and narrative_result.get('direction') != 'UNKNOWN':
-                    st.markdown("---")
-                    st.markdown("### 📝 Analisis Penyebab Prediksi")
+                    st.divider()
+                    st.subheader("Mengapa harga diprediksi bergerak")
                     
                     direction = narrative_result['direction']
                     pct = narrative_result.get('pct_change', 0)
-                    dir_icons = {'NAIK': '🔺', 'TURUN': '🔻', 'STABIL': '➡️'}
                     
-                    st.markdown(f"**{dir_icons.get(direction, '➡️')} Harga diprediksi {direction} ({pct:+.1f}%)**")
+                    st.markdown(f"**Harga diprediksi {direction.lower()} ({pct:+.1f}%)**")
                     st.info(narrative_result.get('summary', ''))
                     
+                    impact_labels = {'high': 'dampak tinggi', 'medium': 'dampak sedang', 'low': 'dampak rendah'}
                     for f in narrative_result.get('factors', []):
-                        impact_icons = {'high': '🔴', 'medium': '🟡', 'low': '🟢'}
-                        st.markdown(f"{impact_icons.get(f['impact'], '⚪')} **{f['name']}**: {f['description'][:200]}...")
+                        desc = f['description'] if len(f['description']) <= 200 else f['description'][:200] + "..."
+                        st.markdown(f"- **{f['name']}** ({impact_labels.get(f['impact'], 'dampak')}): {desc}")
                     
-                    with st.expander("📖 Narasi Lengkap"):
+                    with st.expander("Narasi lengkap"):
                         st.markdown(narrative_result.get('narrative', ''))
 
             except ImportError as e:
-                st.error(f"❌ Dependency belum terinstall: {e}")
-                st.info("Install dengan: `pip install fpdf2`")
+                st.error(f"Laporan PDF belum bisa dibuat karena paket belum terpasang ({e}). "
+                         "Jalankan `pip install -r requirements.txt`, lalu coba lagi.")
             except Exception as e:
-                st.error(f"❌ Error: {e}")
+                st.error(f"Laporan PDF gagal dibuat untuk {rpt_commodity} di {rpt_province}. "
+                         f"Coba kombinasi lain atau muat ulang halaman. (Detail teknis: {type(e).__name__}: {e})")
 
 # --- Tab 2: Excel Export ---
 with tab2:
-    st.markdown("### 📊 Export Data ke Excel")
+    st.markdown("Unduh data harga mentah, pivot per komoditas, dan statistik ringkas dalam satu file Excel.")
 
     date_range = st.date_input(
-        "Rentang Tanggal",
+        "Rentang tanggal",
         value=(df['date'].max() - pd.Timedelta(days=90), df['date'].max()),
         key="excel_dates"
     )
 
-    export_scope = st.radio("Scope Data", ["Komoditas & Provinsi Terpilih", "Semua Komoditas (Provinsi Terpilih)", "Semua Data"])
+    export_scope = st.radio("Cakupan data", ["Komoditas & Provinsi Terpilih", "Semua Komoditas (Provinsi Terpilih)", "Semua Data"])
 
-    if st.button("📥 Generate Excel", key="gen_excel"):
-        with st.spinner("Preparing Excel file..."):
+    if st.button("Buat file Excel", key="gen_excel"):
+        with st.spinner("Menyusun file Excel..."):
             try:
                 if export_scope == "Komoditas & Provinsi Terpilih":
                     export_df = df[
@@ -184,6 +181,9 @@ with tab2:
                 if len(date_range) == 2:
                     start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
                     export_df = export_df[(export_df['date'] >= start) & (export_df['date'] <= end)]
+
+                if export_df.empty:
+                    raise LookupError("rentang kosong")
 
                 export_df['date'] = export_df['date'].dt.strftime('%Y-%m-%d')
 
@@ -209,21 +209,25 @@ with tab2:
 
                 output.seek(0)
 
-                st.success(f"✅ Excel ready! ({len(export_df)} records)")
+                st.success(f"File Excel siap diunduh ({len(export_df):,} baris).")
                 st.download_button(
-                    label="⬇️ Download Excel",
+                    label="Unduh file Excel",
                     data=output.getvalue(),
                     file_name=f"EWS_Data_{rpt_province}_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 )
+            except LookupError:
+                st.warning("Tidak ada data pada rentang tanggal ini. Perlebar rentang tanggal lalu coba lagi.")
             except ImportError:
-                st.error("❌ openpyxl belum terinstall. Install dengan: `pip install openpyxl`")
+                st.error("File Excel belum bisa dibuat karena paket openpyxl belum terpasang. "
+                         "Jalankan `pip install openpyxl`, lalu coba lagi.")
             except Exception as e:
-                st.error(f"❌ Error: {e}")
+                st.error(f"File Excel gagal dibuat. Periksa rentang tanggal lalu coba lagi. "
+                         f"(Detail teknis: {type(e).__name__}: {e})")
 
 # --- Tab 3: Data Preview ---
 with tab3:
-    st.markdown("### 📈 Preview Data")
+    st.markdown("100 data harga terbaru.")
 
     preview_data = df[
         (df['province'] == rpt_province) & 
@@ -240,6 +244,6 @@ with tab3:
     cs1, cs2, cs3, cs4 = st.columns(4)
     prices = preview_data['price']
     cs1.metric("Terakhir", f"IDR {prices.iloc[0]:,.0f}")
-    cs2.metric("Rata-rata (100d)", f"IDR {prices.mean():,.0f}")
-    cs3.metric("Min", f"IDR {prices.min():,.0f}")
-    cs4.metric("Max", f"IDR {prices.max():,.0f}")
+    cs2.metric("Rata-rata 100 data", f"IDR {prices.mean():,.0f}")
+    cs3.metric("Terendah", f"IDR {prices.min():,.0f}")
+    cs4.metric("Tertinggi", f"IDR {prices.max():,.0f}")

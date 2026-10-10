@@ -1,5 +1,5 @@
 """
-Page 1: Main Dashboard — Forecast, EWS, and Supply Risk Analysis.
+Page 1: Main Dashboard: Forecast, EWS, and Supply Risk Analysis.
 """
 import streamlit as st
 import pandas as pd
@@ -26,10 +26,11 @@ try:
 except ImportError:
     Prophet = None
 
-st.set_page_config(page_title="Dashboard | Agri-AI EWS", page_icon="🏠", layout="wide")
+st.set_page_config(page_title="Dashboard | Agri-AI EWS", page_icon="🌾", layout="wide")
 
 # --- Theme ---
-from theme import inject_theme_css, render_theme_toggle, theme_color, get_plotly_template, get_plotly_layout, get_plotly_yaxis, apply_theme_to_plotly
+from theme import (inject_theme_css, render_theme_toggle, render_sidebar_brand, render_footer,
+                   apply_theme_to_plotly, status_chip, ews_card, CHART)
 inject_theme_css()
 
 # --- Initialize Session State if not present ---
@@ -59,17 +60,17 @@ def load_data():
 
 df = load_data()
 if df.empty:
-    st.error("❌ Tidak ada data. Pastikan file food_prices_real.csv tersedia.")
+    st.error("Belum ada data harga. Buka halaman utama untuk menjalankan sinkronisasi PIHPS, "
+             "atau letakkan food_prices_real.csv di folder proyek lalu muat ulang halaman.")
     st.stop()
 
 # --- Sidebar ---
-st.sidebar.image("https://cdn-icons-png.flaticon.com/512/2534/2534044.png", width=50)
-st.sidebar.title("📊 Control Panel")
+render_sidebar_brand("Panel kontrol")
 render_theme_toggle()
-st.sidebar.markdown("---")
+st.sidebar.divider()
 
-selected_province = st.sidebar.selectbox("🗺️ Provinsi", sorted(df['province'].unique()), index=min(10, len(df['province'].unique())-1))
-selected_commodity = st.sidebar.selectbox("🌽 Komoditas", sorted(df['commodity'].unique()), index=0)
+selected_province = st.sidebar.selectbox("Provinsi", sorted(df['province'].unique()), index=min(10, len(df['province'].unique())-1))
+selected_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), index=0)
 
 # Horizon dibatasi 30 hari dari data terakhir, sesuai horizon yang divalidasi
 # protokol evaluasi. Prakiraan rekursif BiLSTM melenceng jauh di luar horizon ini.
@@ -79,7 +80,7 @@ today = datetime.date.today()
 min_date = last_data_date + datetime.timedelta(days=1)
 max_date_val = last_data_date + datetime.timedelta(days=MAX_HORIZON_DAYS)
 forecast_date = st.sidebar.date_input(
-    "📅 Target Prediksi",
+    "Tanggal target prediksi",
     value=max_date_val,
     min_value=min_date,
     max_value=max_date_val,
@@ -89,24 +90,24 @@ if (today - last_data_date).days > 7:
     st.sidebar.warning(f"Data terakhir {last_data_date:%d %b %Y}, tertinggal {(today - last_data_date).days} hari. "
                        "Sinkronkan data agar prakiraan mencakup tanggal sekarang.")
 
-model_choice = st.sidebar.selectbox("🤖 Model AI", ["Smart Ensemble (All Models)", "Hybrid (Prophet + BiLSTM)", "TFT (Transformer)", "Prophet Only", "BiLSTM Only"], index=0)
+model_choice = st.sidebar.selectbox("Model", ["Ensemble (Prophet + BiLSTM + TFT)", "Hybrid (Prophet + BiLSTM)", "TFT", "Prophet saja", "BiLSTM saja"], index=0)
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ Model Parameters")
+st.sidebar.divider()
+st.sidebar.subheader("Parameter model")
 
-with st.sidebar.expander("🔮 Prophet Config", expanded=False):
-    p_cps = st.slider("Changepoint Prior Scale", 0.001, 0.5, st.session_state.model_params['changepoint_prior_scale'], format="%.3f")
-    p_yearly = st.checkbox("Yearly Seasonality", st.session_state.model_params['yearly_seasonality'])
-    p_weekly = st.checkbox("Weekly Seasonality", st.session_state.model_params['weekly_seasonality'])
+with st.sidebar.expander("Prophet", expanded=False):
+    p_cps = st.slider("Changepoint prior scale", 0.001, 0.5, st.session_state.model_params['changepoint_prior_scale'], format="%.3f")
+    p_yearly = st.checkbox("Musiman tahunan", st.session_state.model_params['yearly_seasonality'])
+    p_weekly = st.checkbox("Musiman mingguan", st.session_state.model_params['weekly_seasonality'])
 
-with st.sidebar.expander("🧠 BiLSTM Config", expanded=False):
+with st.sidebar.expander("BiLSTM", expanded=False):
     l_epochs = st.number_input("Epoch maksimum (early stopping)", 5, 200, st.session_state.model_params['epochs'])
-    l_hidden = st.selectbox("Hidden Size", [32, 64, 128, 256], index=[32, 64, 128, 256].index(st.session_state.model_params['hidden_size']))
-    l_seq = st.slider("Sequence Length", 7, 60, st.session_state.model_params['seq_length'])
+    l_hidden = st.selectbox("Hidden size", [32, 64, 128, 256], index=[32, 64, 128, 256].index(st.session_state.model_params['hidden_size']))
+    l_seq = st.slider("Panjang sekuens (hari)", 7, 60, st.session_state.model_params['seq_length'])
 
-with st.sidebar.expander("⚡ TFT Config", expanded=False):
-    t_epochs = st.number_input("Max Epochs", 1, 50, st.session_state.model_params['tft_max_epochs'])
-    t_batch = st.selectbox("Batch Size", [16, 32, 64], index=[16, 32, 64].index(st.session_state.model_params['tft_batch_size']))
+with st.sidebar.expander("TFT", expanded=False):
+    t_epochs = st.number_input("Epoch maksimum", 1, 50, st.session_state.model_params['tft_max_epochs'])
+    t_batch = st.selectbox("Batch size", [16, 32, 64], index=[16, 32, 64].index(st.session_state.model_params['tft_batch_size']))
 
 # Update session state
 st.session_state.model_params = {
@@ -120,8 +121,6 @@ st.session_state.model_params = {
     'tft_batch_size': t_batch
 }
 
-
-st.sidebar.markdown("---")
 
 # --- AI Forecast ---
 MODELS_FOR = {
@@ -231,18 +230,22 @@ def get_ai_forecast(_df, province, commodity, target_date, model_type, params):
 
     except Exception as e:
         import traceback
-        st.error(f"⚠️ AI Engine Error: {e}\n{traceback.format_exc()}")
+        traceback.print_exc()
+        st.error(f"Prakiraan gagal dihitung untuk {commodity} di {province}. "
+                 "Coba model lain di sidebar atau kecilkan parameter model, lalu muat ulang halaman. "
+                 f"(Detail teknis: {type(e).__name__}: {e})")
         return None, None, None, None, None, None
 
 model_type_map = {
-    "Smart Ensemble (All Models)": "Smart Ensemble",
+    "Ensemble (Prophet + BiLSTM + TFT)": "Smart Ensemble",
     "Hybrid (Prophet + BiLSTM)": "Hybrid",
-    "TFT (Transformer)": "TFT",
-    "Prophet Only": "Prophet Only",
-    "BiLSTM Only": "BiLSTM Only",
+    "TFT": "TFT",
+    "Prophet saja": "Prophet Only",
+    "BiLSTM saja": "BiLSTM Only",
 }
 
-with st.spinner(f"🧠 AI sedang menghitung prediksi untuk {forecast_date}..."):
+with st.spinner(f"Menghitung prakiraan {selected_commodity} di {selected_province} untuk {forecast_date:%d %b %Y}. "
+                "Pelatihan model bisa memakan beberapa menit."):
     predicted_price, pred_lower, pred_upper, p_forecast, metrics, ensemble_info = get_ai_forecast(
         df, selected_province, selected_commodity, forecast_date,
         model_type_map[model_choice], st.session_state.model_params
@@ -251,86 +254,40 @@ with st.spinner(f"🧠 AI sedang menghitung prediksi untuk {forecast_date}..."):
 # --- Header ---
 col1, col2 = st.columns([3, 1])
 with col1:
-    st.title("🏠 Dashboard Utama")
-    st.markdown(f"**{forecast_date.strftime('%d %b %Y')}** | **{selected_commodity}** di **{selected_province}**")
-    
+    st.title("Dashboard")
+    st.markdown(f"**{selected_commodity}** di **{selected_province}**, target **{forecast_date.strftime('%d %b %Y')}**")
+
     if ensemble_info:
-        st.markdown("### 🎯 Smart Ensemble Active")
+        st.markdown("##### Bobot ensemble")
         cols = st.columns(len(ensemble_info['weights']))
         for i, (model_name, weight) in enumerate(ensemble_info['weights'].items()):
-            cols[i].metric(model_name.upper(), f"{weight*100:.1f}%")
+            cols[i].metric({'prophet': 'Prophet', 'lstm': 'BiLSTM', 'tft': 'TFT'}.get(model_name, model_name),
+                           f"{weight*100:.1f}%")
 
 
 # --- EWS v2 ---
 current_data = df[(df['province'] == selected_province) & (df['commodity'] == selected_commodity)].sort_values('date')
 current_price = current_data['price'].iloc[-1]
 
+# Risiko pasokan dihitung dari data historis, tidak bergantung pada prakiraan
+supply_risk = SupplyRiskScorer(df).calculate_risk_score(selected_province, selected_commodity)
+
 if predicted_price is not None:
     ews = EWSEngineV2(df)
     ews_result = ews.calculate_composite_score(selected_province, selected_commodity, predicted_price, forecast_date)
-    supply_scorer = SupplyRiskScorer(df)
-    supply_risk = supply_scorer.calculate_risk_score(selected_province, selected_commodity)
     # Generate narrative analysis
     narrator = PriceNarrativeAnalyzer(df)
     narrative_result = narrator.generate_narrative(selected_province, selected_commodity, predicted_price, forecast_date)
 else:
-    ews_result = {'level': 'Unknown', 'score': 0, 'message': 'AI Model offline', 'color': '#666', 'factors': {}, 'recommendations': []}
-    supply_risk = {'score': 0, 'trend_direction': 'N/A', 'description': 'N/A', 'factors': {}}
+    ews_result = {'level': 'Unknown', 'score': 0,
+                  'message': 'Status belum bisa dihitung karena prakiraan gagal. Lihat pesan di atas.',
+                  'factors': {}, 'recommendations': []}
     narrative_result = None
 
 with col2:
-    level = ews_result.get('level', 'Unknown')
-    score = ews_result.get('score', 0)
-    
-    # Level-specific styling
-    level_config = {
-        'Danger': {'gradient': 'linear-gradient(135deg, #FF416C 0%, #FF4B2B 100%)', 'icon': '🔴', 'glow': 'rgba(255,65,108,0.4)'},
-        'Alert':  {'gradient': 'linear-gradient(135deg, #F7971E 0%, #FFD200 100%)', 'icon': '🟠', 'glow': 'rgba(247,151,30,0.4)'},
-        'Watch':  {'gradient': 'linear-gradient(135deg, #F2C94C 0%, #F2994A 100%)', 'icon': '🟡', 'glow': 'rgba(242,201,76,0.3)'},
-        'Normal': {'gradient': 'linear-gradient(135deg, #11998e 0%, #38ef7d 100%)', 'icon': '🟢', 'glow': 'rgba(56,239,125,0.3)'},
-    }
-    cfg = level_config.get(level, {'gradient': 'linear-gradient(135deg, #666 0%, #888 100%)', 'icon': '⚪', 'glow': 'rgba(100,100,100,0.3)'})
-    
-    st.markdown(f"""
-        <div style="
-            background: {cfg['gradient']};
-            border-radius: 16px;
-            padding: 22px 20px;
-            text-align: center;
-            color: white;
-            box-shadow: 0 8px 32px {cfg['glow']}, inset 0 1px 0 rgba(255,255,255,0.2);
-            border: 1px solid rgba(255,255,255,0.15);
-            position: relative;
-            overflow: hidden;
-        ">
-            <div style="
-                position: absolute; top: -20px; right: -20px;
-                font-size: 5rem; opacity: 0.12;
-                transform: rotate(15deg);
-            ">⚠️</div>
-            <div style="font-size: 0.65rem; text-transform: uppercase; letter-spacing: 2px; opacity: 0.85; font-weight: 600;">
-                EWS Status
-            </div>
-            <div style="font-size: 1.8rem; font-weight: 900; margin: 4px 0; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-                {cfg['icon']} {level.upper()}
-            </div>
-            <div style="
-                font-size: 2rem; font-weight: 900;
-                background: rgba(0,0,0,0.15);
-                border-radius: 10px;
-                padding: 4px 0;
-                margin: 6px 0;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            ">{score}/100</div>
-            <div style="
-                font-size: 0.72rem;
-                opacity: 0.9;
-                margin-top: 6px;
-                line-height: 1.3;
-                padding: 0 5px;
-            ">{ews_result.get('message', '')[:80]}</div>
-        </div>
-    """, unsafe_allow_html=True)
+    # Kartu status: fokus utama layar, satu warna solid per level (DESIGN.md)
+    st.markdown(ews_card(ews_result.get('level', 'Unknown'), ews_result.get('score', 0),
+                         ews_result.get('message', '')), unsafe_allow_html=True)
 
 # --- Dynamic Metrics ---
 m1, m2, m3, m4 = st.columns(4)
@@ -341,152 +298,103 @@ if len(current_data) >= 7:
     pct_7d = (current_price - price_7d) / price_7d * 100
 else:
     pct_7d = 0
-m1.metric("Harga Pasar Terakhir", f"IDR {current_price:,.0f}/kg", f"{pct_7d:+.1f}% (7d)")
+m1.metric("Harga pasar terakhir", f"IDR {current_price:,.0f}/kg", f"{pct_7d:+.1f}% dalam 7 hari", delta_color="inverse")
 
 if predicted_price is not None:
     price_diff = (predicted_price - current_price) / current_price * 100
-    m2.metric(f"Prediksi ({forecast_date.strftime('%d %b')})", f"IDR {predicted_price:,.0f}/kg", f"{price_diff:+.1f}%", delta_color="inverse")
+    m2.metric(f"Prediksi ({forecast_date.strftime('%d %b')})", f"IDR {predicted_price:,.0f}/kg", f"{price_diff:+.1f}% dari harga terakhir", delta_color="inverse")
 else:
-    m2.metric(f"Prediksi ({forecast_date.strftime('%d %b')})", "N/A", "0.0%")
+    m2.metric(f"Prediksi ({forecast_date.strftime('%d %b')})", "Belum tersedia")
 
 volatility = current_data['price'].pct_change().std() * 100
 vol_7d_ago = current_data['price'].iloc[:-7].pct_change().std() * 100 if len(current_data) > 14 else volatility
 vol_change = volatility - vol_7d_ago
-m3.metric("Volatilitas Pasar", f"{volatility:.2f}%", f"{vol_change:+.2f}%")
+m3.metric("Volatilitas harian", f"{volatility:.2f}%", f"{vol_change:+.2f} poin vs 7 hari lalu", delta_color="inverse")
 
-m4.metric("Supply Risk Score", f"{supply_risk['score']:.0f}/100", supply_risk['trend_direction'])
+m4.metric("Skor risiko pasokan", f"{supply_risk['score']:.0f}/100")
+if supply_risk.get('trend_direction'):
+    m4.caption(f"Tren harga 7 hari: {supply_risk['trend_direction'].lower()}")
 
 # --- Narrative Analysis Section ---
+DIRECTION_STATUS = {'NAIK': ('Harga diprediksi naik', 'danger'),
+                    'TURUN': ('Harga diprediksi turun', 'normal'),
+                    'STABIL': ('Harga diprediksi stabil', 'neutral')}
+IMPACT_STATUS = {'high': ('Dampak tinggi', 'danger'), 'medium': ('Dampak sedang', 'watch'),
+                 'low': ('Dampak rendah', 'neutral')}
+
+
+def _factor_html(f):
+    label, status = IMPACT_STATUS.get(f['impact'], ('Dampak', 'neutral'))
+    return (f'<div class="factor"><div class="factor__head">{status_chip(label, status)}'
+            f'<span>{f["name"]}</span></div><div class="factor__body">{f["description"]}</div></div>')
+
+
 if narrative_result and narrative_result.get('direction') != 'UNKNOWN':
-    st.markdown("### 📝 Analisis Penyebab Prediksi Harga")
-    
-    # Direction badge
+    st.subheader("Mengapa harga diprediksi bergerak")
+
     direction = narrative_result['direction']
     pct = narrative_result.get('pct_change', 0)
-    dir_config = {
-        'NAIK': {'icon': '🔺', 'color': '#FF4B4B', 'bg': 'rgba(255,75,75,0.1)', 'border': 'rgba(255,75,75,0.3)', 'label': 'HARGA DIPREDIKSI NAIK'},
-        'TURUN': {'icon': '🔻', 'color': '#00CC96', 'bg': 'rgba(0,204,150,0.1)', 'border': 'rgba(0,204,150,0.3)', 'label': 'HARGA DIPREDIKSI TURUN'},
-        'STABIL': {'icon': '➡️', 'color': '#4facfe', 'bg': 'rgba(79,172,254,0.1)', 'border': 'rgba(79,172,254,0.3)', 'label': 'HARGA DIPREDIKSI STABIL'},
-    }
-    dcfg = dir_config.get(direction, dir_config['STABIL'])
-    
+    dir_label, dir_status = DIRECTION_STATUS.get(direction, DIRECTION_STATUS['STABIL'])
     st.markdown(f"""
-        <div style="
-            background: {dcfg['bg']};
-            border: 2px solid {dcfg['border']};
-            border-radius: 12px;
-            padding: 16px 20px;
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        ">
-            <div style="font-size: 2.5rem;">{dcfg['icon']}</div>
-            <div>
-                <div style="font-size: 1.1rem; font-weight: 800; color: {dcfg['color']}; letter-spacing: 1px;">
-                    {dcfg['label']} ({pct:+.1f}%)
-                </div>
-                <div style="font-size: 0.9rem; opacity: 0.85; margin-top: 4px; line-height: 1.4;">
-                    {narrative_result.get('summary', '')}
-                </div>
-            </div>
+        <div class="panel direction">
+            {status_chip(f"{dir_label} ({pct:+.1f}%)", dir_status)}
+            <div class="direction__summary">{narrative_result.get('summary', '')}</div>
         </div>
     """, unsafe_allow_html=True)
-    
-    # Factor details in expandable sections
+
+    # Faktor berdampak tinggi tampil langsung, sisanya di expander
     factors = narrative_result.get('factors', [])
     if factors:
-        impact_icons = {'high': '🔴', 'medium': '🟡', 'low': '🟢'}
-        impact_labels = {'high': 'Dampak Tinggi', 'medium': 'Dampak Sedang', 'low': 'Dampak Rendah'}
-        
-        # Show factors in columns for high-impact, then expanders for the rest
         high_factors = [f for f in factors if f['impact'] == 'high']
         other_factors = [f for f in factors if f['impact'] != 'high']
-        
+
         if high_factors:
-            for f in high_factors:
-                impact_icon = impact_icons.get(f['impact'], '⚪')
-                st.markdown(f"""
-                    <div style="
-                        background: rgba(255,75,75,0.08);
-                        border-left: 4px solid #FF4B4B;
-                        border-radius: 0 8px 8px 0;
-                        padding: 14px 18px;
-                        margin-bottom: 10px;
-                    ">
-                        <div style="font-weight: 700; margin-bottom: 6px;">
-                            {impact_icon} {f['name']} — <span style="color: #FF4B4B; font-size: 0.8rem;">{impact_labels.get(f['impact'], '')}</span>
-                        </div>
-                        <div style="font-size: 0.85rem; line-height: 1.6; opacity: 0.9;">
-                            {f['description']}
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
-        
+            st.markdown("".join(_factor_html(f) for f in high_factors), unsafe_allow_html=True)
+
         if other_factors:
-            with st.expander(f"📋 Lihat {len(other_factors)} faktor lainnya", expanded=False):
-                for f in other_factors:
-                    impact_icon = impact_icons.get(f['impact'], '⚪')
-                    border_color = '#FFD700' if f['impact'] == 'medium' else '#00CC96'
-                    bg_color = 'rgba(255,215,0,0.06)' if f['impact'] == 'medium' else 'rgba(0,204,150,0.06)'
-                    st.markdown(f"""
-                        <div style="
-                            background: {bg_color};
-                            border-left: 4px solid {border_color};
-                            border-radius: 0 8px 8px 0;
-                            padding: 12px 16px;
-                            margin-bottom: 8px;
-                        ">
-                            <div style="font-weight: 700; margin-bottom: 4px;">
-                                {impact_icon} {f['name']} — <span style="font-size: 0.8rem; color: {border_color};">{impact_labels.get(f['impact'], '')}</span>
-                            </div>
-                            <div style="font-size: 0.85rem; line-height: 1.6; opacity: 0.9;">
-                                {f['description']}
-                            </div>
-                        </div>
-                    """, unsafe_allow_html=True)
-    
+            with st.expander(f"Lihat {len(other_factors)} faktor lainnya", expanded=False):
+                st.markdown("".join(_factor_html(f) for f in other_factors), unsafe_allow_html=True)
+
     # Full narrative in expander
-    with st.expander("📖 Baca Narasi Analisis Lengkap", expanded=False):
+    with st.expander("Baca narasi analisis lengkap", expanded=False):
         st.markdown(narrative_result.get('narrative', ''))
 
 # --- Charts ---
-st.markdown("### 📊 Market Intelligence")
-tab1, tab2, tab3, tab4 = st.tabs(["📉 Forecast", "📍 Regional", "🔍 Correlation", "🔬 Model"])
+st.subheader("Grafik dan analisis")
+tab1, tab2, tab3, tab4 = st.tabs(["Prakiraan", "Antarprovinsi", "Korelasi dan faktor EWS", "Evaluasi model"])
 
 with tab1:
     if p_forecast is not None:
         fig = go.Figure()
-        
+
         fig.add_trace(go.Scatter(
             x=current_data['date'].tail(90), y=current_data['price'].tail(90),
-            mode='lines+markers', name='Historical (90d)',
-            line=dict(color='#4facfe', width=3), marker=dict(size=3)
+            mode='lines', name='Harga aktual (90 hari)',
+            line=dict(color=CHART['actual'], width=2.5)
         ))
 
         future_data = p_forecast[p_forecast['ds'] > current_data['date'].max()]
-        
+
         # Confidence band
         fig.add_trace(go.Scatter(
             x=pd.concat([future_data['ds'], future_data['ds'][::-1]]),
             y=pd.concat([future_data['yhat_upper'], future_data['yhat_lower'][::-1]]),
-            fill='toself', fillcolor='rgba(255,165,0,0.1)',
-            line=dict(color='rgba(255,165,0,0)'),
-            name='90% Confidence Interval'
+            fill='toself', fillcolor='rgba(168,106,16,0.15)',
+            line=dict(color='rgba(0,0,0,0)'),
+            name='Interval 90% Prophet'
         ))
-        
+
         fig.add_trace(go.Scatter(
             x=future_data['ds'], y=future_data['yhat'],
-            mode='lines', name='Prophet Forecast',
-            line=dict(color='#FFA500', width=2, dash='dot')
+            mode='lines', name='Prakiraan Prophet',
+            line=dict(color=CHART['forecast'], width=2, dash='dot')
         ))
 
         if predicted_price is not None:
             fig.add_trace(go.Scatter(
                 x=[pd.Timestamp(forecast_date)], y=[predicted_price],
-                mode='markers', name=f'{model_choice} Target',
-                marker=dict(color='#FF4B4B', size=14, symbol='star',
-                           line=dict(width=2, color='white'))
+                mode='markers', name=f'Target {model_choice}',
+                marker=dict(color=CHART['target'], size=13, symbol='diamond')
             ))
 
             # Confidence range for target
@@ -494,8 +402,8 @@ with tab1:
                 fig.add_trace(go.Scatter(
                     x=[pd.Timestamp(forecast_date)]*2,
                     y=[pred_lower, pred_upper],
-                    mode='lines', name='Prediction Range',
-                    line=dict(color='#FF4B4B', width=3),
+                    mode='lines', name='Rentang prediksi target',
+                    line=dict(color=CHART['target'], width=3),
                 ))
 
         apply_theme_to_plotly(
@@ -507,13 +415,13 @@ with tab1:
         fig.update_yaxes(title='Harga (IDR/kg)')
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("📊 Chart tidak tersedia. AI model belum terhubung.")
+        st.info("Grafik prakiraan belum tersedia karena perhitungan model gagal. Lihat pesan di bagian atas halaman.")
 
 with tab2:
     latest_all = df[df['commodity'] == selected_commodity].groupby('province').last().reset_index()
     fig_comp = px.bar(
         latest_all.sort_values('price', ascending=False), x='province', y='price',
-        color='price', title=f"Distribusi Harga: {selected_commodity}",
+        color='price', title=f"Harga {selected_commodity} terakhir per provinsi",
         color_continuous_scale="Viridis",
         labels={'price': 'Harga (IDR/kg)', 'province': ''}
     )
@@ -523,60 +431,54 @@ with tab2:
 with tab3:
     col_a, col_b = st.columns(2)
     with col_a:
-        st.write("**Korelasi Antar-Komoditas**")
+        st.markdown("**Korelasi antarkomoditas**")
         prov_data = df[df['province'] == selected_province].pivot(index='date', columns='commodity', values='price')
         corr = prov_data.corr()
         fig_corr = px.imshow(corr, text_auto=".2f", aspect="auto", color_continuous_scale='RdBu_r',
-                             title=f"Matriks Korelasi — {selected_province}")
+                             zmin=-1, zmax=1, title=f"Korelasi harga di {selected_province}")
         apply_theme_to_plotly(fig_corr)
         st.plotly_chart(fig_corr, use_container_width=True)
     with col_b:
-        st.write("**Analisis Faktor EWS**")
+        st.markdown("**Skor faktor EWS**")
         factors = ews_result.get('factors', {})
         factor_names = {
-            'price_change': '📈 Perubahan Harga',
-            'volatility': '📊 Volatilitas',
-            'seasonal': '📅 Anomali Musiman',
-            'cross_region': '🗺️ Anomali Regional',
-            'velocity': '🚀 Kecepatan Perubahan',
+            'price_change': 'Perubahan harga',
+            'volatility': 'Volatilitas',
+            'seasonal': 'Anomali musiman',
+            'cross_region': 'Anomali regional',
+            'velocity': 'Kecepatan perubahan',
         }
+        if not factors:
+            st.info("Skor faktor muncul setelah prakiraan berhasil dihitung.")
         for key, score in factors.items():
-            name = factor_names.get(key, key)
-            color_bar = '#FF4B4B' if score > 60 else ('#FFA500' if score > 30 else '#00CC96')
-            st.markdown(f"**{name}**: {score:.0f}/100")
+            st.markdown(f"{factor_names.get(key, key)}: **{score:.0f}/100**")
             st.progress(min(score / 100, 1.0))
 
-        st.markdown("---")
-        st.write("**Rekomendasi:**")
-        for rec in ews_result.get('recommendations', []):
-            st.markdown(f"- {rec}")
+        recommendations = ews_result.get('recommendations', [])
+        if recommendations:
+            st.divider()
+            st.markdown("**Rekomendasi**")
+            for rec in recommendations:
+                st.markdown(f"- {rec}")
 
 with tab4:
-    st.markdown("### Evaluasi Model AI")
     if metrics is not None:
         mc1, mc2, mc3 = st.columns(3)
-        mc1.metric("📉 RMSE", f"{metrics['RMSE']:,.2f}")
-        mc2.metric("📉 MAE", f"{metrics['MAE']:,.2f}")
-        mc3.metric("🎯 MAPE", f"{metrics['MAPE (%)']:.2f}%")
+        mc1.metric("RMSE", f"{metrics['RMSE']:,.2f}")
+        mc2.metric("MAE", f"{metrics['MAE']:,.2f}")
+        mc3.metric("MAPE", f"{metrics['MAPE (%)']:.2f}%")
 
         mc4, mc5, mc6 = st.columns(3)
-        mc4.metric("📐 R²", f"{metrics.get('R²', 0):.4f}")
-        mc5.metric("📊 SMAPE", f"{metrics.get('SMAPE (%)', 0):.2f}%")
-        mc6.metric("🎯 Directional Acc.", f"{metrics.get('Directional Accuracy (%)', 0):.1f}%")
+        mc4.metric("R²", f"{metrics.get('R²', 0):.4f}")
+        mc5.metric("SMAPE", f"{metrics.get('SMAPE (%)', 0):.2f}%")
+        mc6.metric("Akurasi arah", f"{metrics.get('Directional Accuracy (%)', 0):.1f}%")
 
         mape = metrics['MAPE (%)']
-        st.success(f"**Kategori (Lewis, 1982): {metrics.get('Kategori MAPE', '-')}** — MAPE {mape:.2f}%")
+        st.success(f"**Kategori (Lewis, 1982): {metrics.get('Kategori MAPE', '-')}**, MAPE {mape:.2f}%")
         st.caption("Metrik dihitung dengan protokol rolling-origin (split 80/20, horizon 30 hari) yang sama "
-                   "dengan Model Laboratory. Directional Accuracy relatif terhadap harga di titik asal.")
+                   "dengan Laboratorium Model. Akurasi arah relatif terhadap harga di titik asal.")
     else:
-        st.info("⚠️ Metrik belum tersedia.")
+        st.info("Metrik evaluasi belum tersedia karena perhitungan model gagal. Coba model lain di sidebar.")
 
-# Footer
-st.markdown("---")
-st.markdown("""
-<div class="theme-footer">
-    <div>ENGINE: PROPHET + BiLSTM + TFT</div>
-    <div>DATA: PIHPS Bank Indonesia</div>
-    <div>© 2026 Fahmi Prasanda</div>
-</div>
-""", unsafe_allow_html=True)
+st.divider()
+render_footer("Model: Prophet, BiLSTM, TFT", "Data: PIHPS Bank Indonesia", "© 2026 Fahmi Prasanda")
