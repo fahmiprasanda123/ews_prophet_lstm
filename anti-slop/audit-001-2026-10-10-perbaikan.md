@@ -93,3 +93,12 @@ Halaman diganti nama menjadi bahasa Indonesia tanpa emoji. URL ikut berubah: `/D
 | Navigasi | Label: Beranda, Dashboard, Analisis Regional, Laboratorium Model, Laporan, Tentang, Chatbot |
 | Chatbot: "Bagaimana tren harga cabai merah?" | Jawaban tampil, 0 emoji |
 | Dashboard, "Prophet saja" (setelah perubahan engine) | Kartu "Waspada 52/100", pesan tanpa awalan, caption "Tren harga 7 hari: stabil", rekomendasi tanpa emoji; 0 emoji, 0 em dash, 0 panah di seluruh halaman termasuk tab tersembunyi |
+
+## Pembersihan akhir (requirements dan peringatan)
+
+- `requirements.txt`: `numpy<2` khusus Intel Mac (`platform_machine == "x86_64"`), `streamlit>=1.56.0`, `httpx2` menggantikan `httpx` untuk TestClient Starlette 1.x, ditambah `pytest`.
+- `apscheduler` dan `statsmodels` ternyata belum terpasang. Akibatnya selama ini sinkronisasi harian PIHPS diam-diam dilewati, dan ARIMA pembanding tidak tersedia. Keduanya sudah dipasang.
+- `pytest.ini` membatasi koleksi ke `tests/`, sehingga skrip pelatihan `test_tft.py` di root tidak ikut berjalan.
+- `api/schemas.py`: `Field(example=...)` diganti `examples=[...]` (Pydantic v2).
+- `use_container_width=True` (22 tempat) diganti `width="stretch"`.
+- Hasil: `pytest` 149 lulus, 1 dilewati, **0 peringatan**; AppTest semua halaman (lewat `app.py`), termasuk Dashboard ensemble: 0 exception, 0 error, 0 deprecation; `pip check` bersih; `pip install -r requirements.txt` tidak memasang apa pun lagi.

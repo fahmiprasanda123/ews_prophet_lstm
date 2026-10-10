@@ -155,7 +155,7 @@ with tab1:
                 'R²': '{:.3f}', 'Directional Accuracy (%)': '{:.1f}',
             }).highlight_min(subset=['RMSE', 'MAE', 'MAPE (%)', 'SMAPE (%)'], props=BEST_CELL)
               .highlight_max(subset=['R²', 'Directional Accuracy (%)'], props=BEST_CELL),
-            use_container_width=True,
+            width="stretch",
         )
         best = metrics_df.loc[metrics_df['MAPE (%)'].idxmin()]
         st.success(f"MAPE terendah: **{best['Model']}** ({best['MAPE (%)']:.2f}%, kategori {best['Kategori MAPE']})")
@@ -191,13 +191,13 @@ with tab1:
             fig.add_vline(x=origin, line_width=0.5, line_color='rgba(128,128,128,0.35)')
         apply_theme_to_plotly(fig, height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02))
         fig.update_yaxes(title='Harga (IDR/kg)')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         st.subheader("MAPE menurut horizon prediksi")
-        st.dataframe(result['horizon_mape'].style.format(precision=2), use_container_width=True)
+        st.dataframe(result['horizon_mape'].style.format(precision=2), width="stretch")
         if not result['intervals'].empty:
             st.subheader("Cakupan interval ketidakpastian")
-            st.dataframe(result['intervals'].style.format(precision=2), use_container_width=True)
+            st.dataframe(result['intervals'].style.format(precision=2), width="stretch")
         st.download_button(
             "Unduh prediksi per tanggal (CSV)", pf.to_csv().encode('utf-8'),
             file_name=f"prediksi_{lab_commodity}_{lab_province}.csv".replace(' ', '_'), mime='text/csv',
@@ -255,7 +255,7 @@ with tab2:
                 title="MAPE per fold: hijau < 10%, oranye 10-20%, merah > 20%",
             )
             fig_bt.update_yaxes(title='MAPE (%)')
-            st.plotly_chart(fig_bt, use_container_width=True)
+            st.plotly_chart(fig_bt, width="stretch")
 
             # Actual vs Predicted overlay for best fold
             best = results[summary['best_fold']]
@@ -266,7 +266,7 @@ with tab2:
                 fig_best, height=350,
                 title=f"Fold terbaik ({best['test_start']} s.d. {best['test_end']}), MAPE {best['metrics']['MAPE (%)']:.2f}%",
             )
-            st.plotly_chart(fig_best, use_container_width=True)
+            st.plotly_chart(fig_best, width="stretch")
 
             # EWS accuracy test
             st.subheader("Akurasi deteksi EWS")
@@ -283,7 +283,7 @@ with tab2:
             ec3.metric("Rata-rata waktu tenggang", f"{ews_acc['avg_lead_time']:.0f} hari")
 
             if ews_acc.get('events'):
-                st.dataframe(pd.DataFrame(ews_acc['events']), use_container_width=True)
+                st.dataframe(pd.DataFrame(ews_acc['events']), width="stretch")
         else:
             st.warning("Data tidak cukup untuk backtesting dengan parameter ini. Perkecil jendela latih atau jendela uji.")
 
@@ -338,7 +338,7 @@ with tab3:
         )
         fig_imp.update_xaxes(title='|Correlation|')
         fig_imp.update_yaxes(autorange='reversed')
-        st.plotly_chart(fig_imp, use_container_width=True)
+        st.plotly_chart(fig_imp, width="stretch")
 
         st.markdown("""
         > **Interpretasi**

@@ -413,7 +413,7 @@ with tab1:
         )
         fig.update_xaxes(showgrid=False)
         fig.update_yaxes(title='Harga (IDR/kg)')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("Grafik prakiraan belum tersedia karena perhitungan model gagal. Lihat pesan di bagian atas halaman.")
 
@@ -426,7 +426,7 @@ with tab2:
         labels={'price': 'Harga (IDR/kg)', 'province': ''}
     )
     apply_theme_to_plotly(fig_comp)
-    st.plotly_chart(fig_comp, use_container_width=True)
+    st.plotly_chart(fig_comp, width="stretch")
 
 with tab3:
     col_a, col_b = st.columns(2)
@@ -437,7 +437,7 @@ with tab3:
         fig_corr = px.imshow(corr, text_auto=".2f", aspect="auto", color_continuous_scale='RdBu_r',
                              zmin=-1, zmax=1, title=f"Korelasi harga di {selected_province}")
         apply_theme_to_plotly(fig_corr)
-        st.plotly_chart(fig_corr, use_container_width=True)
+        st.plotly_chart(fig_corr, width="stretch")
     with col_b:
         st.markdown("**Skor faktor EWS**")
         factors = ews_result.get('factors', {})

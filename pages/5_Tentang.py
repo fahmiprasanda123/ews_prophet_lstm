@@ -114,7 +114,7 @@ with ds_tab2:
             {"Provinsi": prov, "Lintang": f"{lat:.2f}", "Bujur": f"{lon:.2f}"}
             for prov, (lat, lon) in sorted(PROVINCE_COORDS.items())
         ]
-        st.dataframe(pd.DataFrame(coords_data), use_container_width=True, height=300, hide_index=True)
+        st.dataframe(pd.DataFrame(coords_data), width="stretch", height=300, hide_index=True)
     except ImportError:
         st.info("Tabel koordinat tidak bisa dimuat karena modul data.weather_client tidak ditemukan.")
 
@@ -147,7 +147,7 @@ with ds_tab2:
                     display_df = features.copy()
                     display_df.index = display_df.index.strftime('%Y-%m-%d')
                     display_df.columns = ['Curah hujan (mm)', 'Suhu (°C)', 'Indeks ENSO', 'Musim hujan']
-                    st.dataframe(display_df, use_container_width=True)
+                    st.dataframe(display_df, width="stretch")
 
                     source = client.get_data_source_info()
                     st.caption(f"Cuaca: {source['weather']['provider']} ({source['weather']['license']}). "
@@ -295,7 +295,7 @@ factors_data = [
     {"Faktor": "Kecepatan perubahan", "Bobot": "15%",
      "Deskripsi": "Percepatan kenaikan harga (7 vs 14 vs 30 hari). Makin cepat, makin berisiko."},
 ]
-st.dataframe(pd.DataFrame(factors_data), use_container_width=True, hide_index=True)
+st.dataframe(pd.DataFrame(factors_data), width="stretch", hide_index=True)
 
 st.markdown("#### Level peringatan")
 levels = [
