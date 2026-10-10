@@ -14,8 +14,8 @@ class PriceRecord(BaseModel):
 
 
 class ForecastRequest(BaseModel):
-    province: str = Field(..., example="DKI Jakarta")
-    commodity: str = Field(..., example="Beras")
+    province: str = Field(..., examples=["DKI Jakarta"])
+    commodity: str = Field(..., examples=["Beras"])
     days: int = Field(30, ge=1, le=120, description="Forecast horizon in days")
     model: str = Field("hybrid", description="Model: prophet, lstm, tft, hybrid")
 

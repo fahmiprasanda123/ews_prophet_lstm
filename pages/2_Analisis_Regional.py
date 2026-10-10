@@ -116,7 +116,7 @@ if geojson is not None:
         margin=dict(l=0, r=0, t=30, b=0),
         title=f"Peta harga {selected_commodity} di Indonesia",
     )
-    st.plotly_chart(fig_map, use_container_width=True)
+    st.plotly_chart(fig_map, width="stretch")
 else:
     st.warning("Peta tidak bisa ditampilkan karena file batas provinsi belum ada. "
                "Letakkan file GeoJSON di `assets/indonesia.geojson`, lalu muat ulang halaman.")
@@ -159,7 +159,7 @@ with col_a:
     )
     fig_bar.update_xaxes(showgrid=False, tickangle=45)
     fig_bar.update_yaxes(title='Harga (IDR/kg)')
-    st.plotly_chart(fig_bar, use_container_width=True)
+    st.plotly_chart(fig_bar, width="stretch")
 
 with col_b:
     st.markdown("**5 provinsi termahal**")
@@ -202,7 +202,7 @@ if not prov_series.empty:
             title=f"Harga 180 hari terakhir di {drill_province}",
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
-        st.plotly_chart(fig_trend, use_container_width=True)
+        st.plotly_chart(fig_trend, width="stretch")
 
     with c2:
         # All commodities in this province
@@ -216,4 +216,4 @@ if not prov_series.empty:
         apply_theme_to_plotly(
             fig_comm, height=350, showlegend=False,
         )
-        st.plotly_chart(fig_comm, use_container_width=True)
+        st.plotly_chart(fig_comm, width="stretch")

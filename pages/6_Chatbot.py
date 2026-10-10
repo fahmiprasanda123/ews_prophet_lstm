@@ -49,7 +49,7 @@ for q in example_questions:
     st.sidebar.markdown(f"- *{q}*")
 
 st.sidebar.divider()
-if st.sidebar.button("Hapus riwayat chat", use_container_width=True,
+if st.sidebar.button("Hapus riwayat chat", width="stretch",
                      disabled=not st.session_state.chat_messages):
     st.session_state.chat_messages = []
     st.rerun()
@@ -73,7 +73,7 @@ if not st.session_state.chat_messages:
     ]
     for i, (label, query) in enumerate(quick_actions):
         col = quick_cols[i % 3]
-        if col.button(label, key=f"quick_{i}", use_container_width=True):
+        if col.button(label, key=f"quick_{i}", width="stretch"):
             st.session_state.pending_quick_action = query
             st.rerun()
 
@@ -149,7 +149,7 @@ def _render_chart(chart_data, chart_type, chart_title):
         xaxis_title="",
         yaxis_title="Harga (Rp)",
     )
-    st.plotly_chart(fig, use_container_width=True, key=f"chart_{id(chart_data)}")
+    st.plotly_chart(fig, width="stretch", key=f"chart_{id(chart_data)}")
 
 
 def _process_and_store(user_input: str):

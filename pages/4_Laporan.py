@@ -238,7 +238,7 @@ with tab3:
     preview_data_display['date'] = preview_data_display['date'].dt.strftime('%Y-%m-%d')
     preview_data_display['price'] = preview_data_display['price'].apply(lambda x: f"IDR {x:,.0f}")
 
-    st.dataframe(preview_data_display, use_container_width=True, height=500)
+    st.dataframe(preview_data_display, width="stretch", height=500)
 
     # Quick stats
     cs1, cs2, cs3, cs4 = st.columns(4)

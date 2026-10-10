@@ -1,27 +1,33 @@
-streamlit>=1.40.0
+# Tema terang/gelap kustom, font, st.navigation, dan width="stretch" (diuji di 1.56)
+streamlit>=1.56.0
 pandas>=2.0.0
-numpy>=1.24.0
+# PyTorch untuk Intel Mac berhenti di 2.2.2, yang dikompilasi untuk NumPy 1.x.
+# Dengan NumPy 2 muncul "RuntimeError: Numpy is not available" (BiLSTM/TFT gagal).
+numpy>=1.24.0,<2; platform_system == "Darwin" and platform_machine == "x86_64"
+numpy>=1.24.0; platform_system != "Darwin" or platform_machine != "x86_64"
 plotly>=5.0.0
 prophet>=1.1.0
 torch
 scikit-learn
 requests
 
-# v2.0 — Data Layer
+# v2.0: Data Layer
 apscheduler>=3.10.0
 statsmodels>=0.14.0
 
-# v2.0 — API
+# v2.0: API
 fastapi>=0.100.0
 uvicorn>=0.20.0
-httpx  # dibutuhkan TestClient pada tests/test_api.py
+httpx2  # TestClient pada tests/test_api.py (Starlette >= 1.x memakai httpx2)
 pydantic>=2.0.0
 
-# v2.0 — Reports
+# v2.0: Reports
 fpdf2>=2.7.0
 openpyxl>=3.1.0
 
-# v2.0 — TFT (optional, large dependency)
-# Uncomment below to enable Temporal Fusion Transformer:
+# v2.0: TFT (dependensi besar)
 pytorch-forecasting>=1.0.0
 pytorch-lightning>=2.0.0
+
+# Pengujian
+pytest
