@@ -361,7 +361,7 @@ if narrative_result and narrative_result.get('direction') != 'UNKNOWN':
 
 # --- Charts ---
 st.subheader("Grafik dan analisis")
-tab1, tab2, tab3, tab4 = st.tabs(["Prakiraan", "Antarprovinsi", "Korelasi dan faktor EWS", "Evaluasi model"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Prakiraan", "Antarprovinsi", "Korelasi dan faktor EWS", "Evaluasi model", "Prakiraan periodik"])
 
 with tab1:
     if p_forecast is not None:
@@ -482,3 +482,61 @@ with tab4:
 
 st.divider()
 render_footer("Model: Prophet, BiLSTM, TFT", "Data: PIHPS Bank Indonesia", "© 2026 Fahmi Prasanda")
+
+
+# --- Prakiraan periodik: beberapa hari ke depan dari data terakhir ---
+@st.cache_resource(show_spinner=False)
+def get_forecast_path(_df, province, commodity, params, last_date_key):
+    """Prakiraan 30 hari ke depan; bobot Smart Ensemble dari protokol evaluasi (di-cache)."""
+    from models.forecast_ahead import forecast_path
+    ens_key = next(k for k, v in MODELS_FOR.items() if 'tft' in v and 'ensemble' in v)
+    evaluation = get_model_evaluation(_df, province, commodity, ens_key, params)
+    ens = evaluation.get('ensemble') or {}
+    return forecast_path(_df, province, commodity, horizon=30, config=_protocol_config(params),
+                         weights=ens.get('weights'), best_single=ens.get('best_single'))
+
+
+with tab5:
+    from models.forecast_ahead import aggregate_forecast
+    st.markdown(f"Prakiraan harga **{selected_commodity}** di **{selected_province}** untuk beberapa hari ke depan "
+                f"dari data terakhir (**{last_data_date:%d %b %Y}**), memakai Smart Ensemble dengan bobot hasil "
+                "validasi. Horizon dibatasi 30 hari sesuai horizon yang telah divalidasi.")
+    pc1, pc2 = st.columns(2)
+    horizon_sel = pc1.selectbox("Rentang prakiraan", [7, 14, 30], index=0,
+                                format_func=lambda d: f"{d} hari ke depan", key="path_horizon")
+    agg_sel = pc2.radio("Ringkasan", ["Harian", "Mingguan", "Bulanan"], horizontal=True, key="path_agg")
+    if st.button("Hitung prakiraan periodik", key="run_path"):
+        with st.spinner("Melatih model pada seluruh data dan menghitung prakiraan..."):
+            st.session_state['path_result'] = get_forecast_path(df, selected_province, selected_commodity,
+                                                                st.session_state.model_params, str(last_data_date))
+    path_res = st.session_state.get('path_result')
+    if path_res is not None and (path_res['province'], path_res['commodity']) == (selected_province, selected_commodity):
+        path = path_res['path'].iloc[:horizon_sel]
+        show_cols = [c for c in ['Smart Ensemble', 'Batas bawah', 'Batas atas', 'BiLSTM', 'Prophet', 'TFT',
+                                 'ARIMA(5,1,0)'] if c in path.columns]
+        table = aggregate_forecast(path[show_cols], {'Harian': 'D', 'Mingguan': 'W', 'Bulanan': 'M'}[agg_sel])
+        hist = current_data[['date', 'price']].tail(60)
+        figp = go.Figure()
+        figp.add_trace(go.Scatter(x=hist['date'], y=hist['price'], mode='lines', name='Harga aktual (60 hari)',
+                                  line=dict(color=CHART['actual'], width=2.5)))
+        if 'Batas bawah' in path:
+            figp.add_trace(go.Scatter(x=list(path.index) + list(path.index[::-1]),
+                                      y=list(path['Batas atas']) + list(path['Batas bawah'][::-1]),
+                                      fill='toself', fillcolor='rgba(44,160,44,0.15)',
+                                      line=dict(color='rgba(0,0,0,0)'), name='Interval prakiraan'))
+        if 'Smart Ensemble' in path:
+            figp.add_trace(go.Scatter(x=path.index, y=path['Smart Ensemble'], mode='lines+markers',
+                                      name='Smart Ensemble', line=dict(color='#2ca02c', width=2.5)))
+        apply_theme_to_plotly(figp, height=420, margin=dict(l=0, r=0, t=40, b=0),
+                              legend=dict(orientation="h", yanchor="bottom", y=1.02))
+        figp.update_yaxes(title='Harga (IDR/kg)')
+        st.plotly_chart(figp, width="stretch")
+        num_cols = [c for c in table.columns if c not in ('Periode', 'Jumlah hari')]
+        st.dataframe(table.style.format({c: '{:,.0f}' for c in num_cols}), width="stretch", hide_index=True)
+        st.caption("Batas bawah/atas: rata-rata berbobot interval model penyusun (Prophet 90%, MC Dropout 90%, "
+                   "kuantil TFT). Akurasi menurun pada horizon lebih panjang (lihat Tabel MAPE per horizon).")
+        st.download_button("Unduh prakiraan (CSV)", table.to_csv(index=False).encode('utf-8'),
+                           file_name=f"prakiraan_{agg_sel.lower()}_{selected_commodity}_{selected_province}.csv"
+                           .replace(' ', '_'), mime='text/csv')
+    else:
+        st.info("Klik tombol di atas untuk menghitung prakiraan periodik.")
