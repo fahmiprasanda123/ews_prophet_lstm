@@ -75,9 +75,35 @@ def main():
     ap.add_argument('--tanpa-kovariat', action='store_true')
     ap.add_argument('--cepat', action='store_true')
     ap.add_argument('--output', default=os.path.join(ROOT, 'parameter_outputs'))
+    ap.add_argument('--lanjut', action='store_true',
+                    help='Lanjutkan run yang terhenti: baris yang sudah ada di CSV tidak dihitung ulang.')
     a = ap.parse_args()
     quiet_libraries()
     os.makedirs(a.output, exist_ok=True)
+    import platform
+    versi = {'python': platform.python_version()}
+    for mod in ['numpy', 'pandas', 'statsmodels', 'prophet', 'torch', 'pytorch_forecasting']:
+        try:
+            versi[mod] = __import__(mod).__version__
+        except Exception:
+            versi[mod] = '-'
+    print('Lingkungan:', sys.executable, versi, flush=True)
+    ref_path = os.path.join(ROOT, 'thesis_outputs', '4_2_metrik_model.csv')
+    ref = pd.read_csv(ref_path).set_index('Model')['MAPE (%)'] if os.path.exists(ref_path) else None
+    REFNAME = {'Naive Seasonal': 'Naive Seasonal', 'SMA': 'SMA-30', 'ARIMA': 'ARIMA(5,1,0)', 'Prophet': 'Prophet',
+               'BiLSTM': 'BiLSTM', 'TFT': 'TFT', 'Smart Ensemble': 'Smart Ensemble'}
+
+    def cek_bawaan(df_rows, label):
+        if ref is None or a.cepat or a.tanpa_kovariat or df_rows.empty:
+            return True
+        ok = True
+        for _, r in df_rows[df_rows['Bawaan'].astype(str) == 'True'].drop_duplicates('Model').iterrows():
+            target = float(ref.get(REFNAME[r['Model']], np.nan))
+            beda = abs(float(r['MAPE (%)']) - target)
+            status = 'cocok' if beda <= 0.01 else 'TIDAK COCOK'
+            ok &= beda <= 0.01
+            print(f'  [{label}] {r["Model"]:15s} MAPE bawaan {float(r["MAPE (%)"]):.4f} vs Tabel 4.2 {target:.4f} -> {status}')
+        return ok
     base = merge_config(QUICK if a.cepat else {})
     df = load_frozen_data(a.data)
     y, _ = prepare_series(df, a.provinsi, a.komoditas, base['ffill_limit'])
@@ -99,11 +125,24 @@ def main():
     wanted = {m.strip() for m in a.model.split(',') if m.strip()}
     sweeps = [s for s in SWEEPS if not wanted or s[0] in wanted]
     cache, rows = {}, []
+    csv_path = os.path.join(a.output, 'sensitivitas_parameter.csv')
+    done = set()
+    if a.lanjut and os.path.exists(csv_path):
+        old_rows = pd.read_csv(csv_path, dtype={'Nilai': str})
+        if not cek_bawaan(old_rows, 'hasil lama'):
+            print('\nHasil lama tidak konsisten dengan Tabel 4.2 (kemungkinan dijalankan di lingkungan Python lain).\n'
+                  'Hapus folder keluaran lalu jalankan ulang tanpa --lanjut di virtual environment yang sama dengan Bab IV.')
+            sys.exit(3)
+        rows = old_rows.to_dict('records')
+        done = {(r['Model'], r['Parameter'], str(r['Nilai'])) for r in rows}
+        print(f'Melanjutkan: {len(rows)} baris sudah ada, hanya baris yang belum ada yang dihitung.', flush=True)
 
     def run(model, key, value, windows=test_w, train_end=split):
         cfg = merge_config(QUICK if a.cepat else {})
         use_cov = cov
-        if key == 'kovariat':
+        if key is None:
+            pass  # konfigurasi bawaan (dipakai sebagai model penyusun Smart Ensemble)
+        elif key == 'kovariat':
             use_cov = cov if value else None
         elif model == 'Naive Seasonal':
             cfg['seasonal_period'] = value
@@ -140,6 +179,8 @@ def main():
         if a.cepat and key == 'max_epochs':
             values = [1, 2]
         for v in values:
+            if (model, label, fmt_val(v)) in done:
+                continue
             print(f'{model:15s} {label} = {fmt_val(v)}', flush=True)
             if model == 'Smart Ensemble':
                 from models.ensemble import SmartEnsemble
@@ -162,9 +203,15 @@ def main():
                          'MAPE (%)': m['MAPE (%)'], 'RMSE': m['RMSE'], 'MAE': m['MAE'],
                          'Directional Accuracy (%)': m['Directional Accuracy (%)'],
                          'Dalam ±10% (%)': m['Dalam ±10% (%)'], 'Waktu (detik)': round(secs, 1), 'Catatan': extra})
-            pd.DataFrame(rows).to_csv(os.path.join(a.output, 'sensitivitas_parameter.csv'), index=False)
+            pd.DataFrame(rows).to_csv(csv_path, index=False)
 
     res = pd.DataFrame(rows)
+    order = {(m, l, fmt_val(v)): i for i, (m, l, k, vals, d) in enumerate(SWEEPS) for v in vals}
+    res['_urut'] = [order.get((r['Model'], r['Parameter'], str(r['Nilai'])), 999) for _, r in res.iterrows()]
+    res = res.sort_values('_urut', kind='stable').drop(columns='_urut').reset_index(drop=True)
+    res.to_csv(csv_path, index=False)
+    print('\nCek konsistensi baris bawaan terhadap Tabel 4.2:')
+    cek_bawaan(res, 'hasil akhir')
     # Grafik: MAPE terhadap nilai parameter, satu panel per parameter
     import matplotlib
     matplotlib.use('Agg')

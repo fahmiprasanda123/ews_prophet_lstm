@@ -34,17 +34,18 @@ from theme import (inject_theme_css, render_theme_toggle, render_sidebar_brand, 
 inject_theme_css()
 
 # --- Initialize Session State if not present ---
+DEFAULT_MODEL_PARAMS = {
+    'changepoint_prior_scale': 0.05,
+    'yearly_seasonality': True,
+    'weekly_seasonality': True,
+    'epochs': 50,
+    'hidden_size': 128,
+    'seq_length': 30,
+    'tft_max_epochs': 15,
+    'tft_batch_size': 64
+}
 if 'model_params' not in st.session_state:
-    st.session_state.model_params = {
-        'changepoint_prior_scale': 0.05,
-        'yearly_seasonality': True,
-        'weekly_seasonality': True,
-        'epochs': 50,
-        'hidden_size': 128,
-        'seq_length': 30,
-        'tft_max_epochs': 15,
-        'tft_batch_size': 64
-    }
+    st.session_state.model_params = dict(DEFAULT_MODEL_PARAMS)
 
 # --- Load Data ---
 @st.cache_data(ttl=3600)
@@ -90,7 +91,8 @@ if (today - last_data_date).days > 7:
     st.sidebar.warning(f"Data terakhir {last_data_date:%d %b %Y}, tertinggal {(today - last_data_date).days} hari. "
                        "Sinkronkan data agar prakiraan mencakup tanggal sekarang.")
 
-model_choice = st.sidebar.selectbox("Model", ["Ensemble (Prophet + BiLSTM + TFT)", "Hybrid (Prophet + BiLSTM)", "TFT", "Prophet saja", "BiLSTM saja"], index=0)
+model_choice = st.sidebar.selectbox("Model", ["Ensemble (Prophet + BiLSTM + TFT)", "Hybrid (Prophet + BiLSTM)", "TFT", "Prophet saja", "BiLSTM saja"], index=3,
+                                    help="Prophet saja paling cepat dimuat; pilih Ensemble untuk model lengkap.")
 
 st.sidebar.divider()
 st.sidebar.subheader("Parameter model")
@@ -149,6 +151,13 @@ def _protocol_config(params):
 @st.cache_resource(show_spinner=False)
 def get_model_evaluation(_df, province, commodity, model_type, params):
     """Metrik dan bobot ensemble dari protokol evaluasi yang sama dengan Model Laboratory/skrip tesis."""
+    # Pakai hasil skrip evaluasi (thesis_outputs/) bila kombinasi dan parameter sama dengan bawaan,
+    # agar halaman tidak menjalankan ulang seluruh protokol evaluasi (bisa 10+ menit di CPU).
+    from models.stored_results import stored_evaluation
+    if dict(params) == DEFAULT_MODEL_PARAMS:
+        stored = stored_evaluation(province, commodity)
+        if stored is not None:
+            return stored
     from models.evaluation_protocol import evaluate_series
     return evaluate_series(_df, province, commodity, config=_protocol_config(params),
                            models=MODELS_FOR[model_type])
@@ -492,8 +501,16 @@ def get_forecast_path(_df, province, commodity, params, last_date_key):
     ens_key = next(k for k, v in MODELS_FOR.items() if 'tft' in v and 'ensemble' in v)
     evaluation = get_model_evaluation(_df, province, commodity, ens_key, params)
     ens = evaluation.get('ensemble') or {}
+    cov_raw = None
+    try:  # kovariat iklim nyata (dibaca dari cache data/cache bila sudah diunduh skrip)
+        from models.evaluation_protocol import load_climate_covariates, prepare_series
+        y_tmp, _ = prepare_series(_df, province, commodity)
+        end = min(y_tmp.index.max(), pd.Timestamp.today().normalize() - pd.Timedelta(days=7))
+        cov_raw = load_climate_covariates(province, y_tmp.index.min(), end, strict=True)
+    except Exception:
+        cov_raw = None
     return forecast_path(_df, province, commodity, horizon=30, config=_protocol_config(params),
-                         weights=ens.get('weights'), best_single=ens.get('best_single'))
+                         covariates_raw=cov_raw, weights=ens.get('weights'), best_single=ens.get('best_single'))
 
 
 with tab5:
@@ -533,6 +550,8 @@ with tab5:
         st.plotly_chart(figp, width="stretch")
         num_cols = [c for c in table.columns if c not in ('Periode', 'Jumlah hari')]
         st.dataframe(table.style.format({c: '{:,.0f}' for c in num_cols}), width="stretch", hide_index=True)
+        st.caption(f"Kovariat iklim: {'ya' if path_res.get('covariates_used') else 'tidak'} · Bobot ensemble: "
+                   + ', '.join(f"{k} {v * 100:.0f}%" for k, v in (path_res.get('weights') or {}).items()))
         st.caption("Batas bawah/atas: rata-rata berbobot interval model penyusun (Prophet 90%, MC Dropout 90%, "
                    "kuantil TFT). Akurasi menurun pada horizon lebih panjang (lihat Tabel MAPE per horizon).")
         st.download_button("Unduh prakiraan (CSV)", table.to_csv(index=False).encode('utf-8'),
