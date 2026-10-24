@@ -17,11 +17,11 @@ if 'model_params' not in st.session_state:
         'changepoint_prior_scale': 0.05,
         'yearly_seasonality': True,
         'weekly_seasonality': True,
-        'epochs': 10,
+        'epochs': 50,
         'hidden_size': 128,
         'seq_length': 30,
-        'tft_max_epochs': 2,
-        'tft_batch_size': 32
+        'tft_max_epochs': 15,
+        'tft_batch_size': 64
     }
 
 # --- Sidebar ---

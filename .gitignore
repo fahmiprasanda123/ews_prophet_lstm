@@ -2,6 +2,8 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.bak
+*_v1.py
 
 # Virtual Environment
 .venv
@@ -13,14 +15,22 @@ env/
 # IDEs
 .vscode/
 .idea/
+.claude/
 .DS_Store
+**/.DS_Store
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
 
-# folder
+# Logs & Training
+*.log
+lightning_logs/
+
+# Cache & Temporary
+data/cache/
+kode/
 recom/
 
 # Data and Models (Optional, but often recommended for large binaries)
@@ -32,6 +42,3 @@ recom/
 *.db
 *.db-shm
 *.db-wal
-
-# Log proses scripts/thesis_outputs.py
-thesis_run.log

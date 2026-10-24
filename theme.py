@@ -135,13 +135,19 @@ def inject_theme_css():
     supaya ring fokus, warna tema, dan tata letak mobile tetap bawaan."""
     st.markdown("""
     <style>
-        [data-testid="stMetricValue"] { font-variant-numeric: tabular-nums; }
-        /* Nilai dan delta metrik membungkus di kolom sempit, tidak terpotong "IDR 2..." */
+        /* Ukuran nilai mengecil di kolom sempit; angka tidak dipecah di tengah ("683,05 / 7") */
+        [data-testid="stMetricValue"] {
+            font-variant-numeric: tabular-nums;
+            font-size: clamp(1.5rem, 2.4vw, 2.25rem) !important;
+        }
+        /* Nilai dan delta metrik membungkus di spasi, tidak terpotong "IDR 2..." */
         [data-testid="stMetricValue"], [data-testid="stMetricValue"] *,
         [data-testid="stMetricDelta"], [data-testid="stMetricDelta"] * {
             white-space: normal !important;
             overflow: visible !important;
             text-overflow: clip !important;
+            word-break: normal !important;
+            overflow-wrap: normal !important;
         }
         /* Caption bawaan memakai opacity 0.6: hanya 4.0:1 di sidebar terang. 0.8 = 7.3:1 */
         [data-testid="stCaptionContainer"] { opacity: 0.8 !important; }

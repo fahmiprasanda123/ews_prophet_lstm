@@ -1,0 +1,14 @@
+{
+  "dibuat": "2026-10-24T11:33:55",
+  "sumber_data": "database sistem",
+  "data_terakhir": "2026-10-23",
+  "harga_terakhir": 29950.0,
+  "horizon_hari": 30,
+  "bobot": {
+    "Prophet": 0.0,
+    "BiLSTM": 0.95,
+    "TFT": 0.05
+  },
+  "kovariat_iklim": true,
+  "mode_cepat": false
+}
