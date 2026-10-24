@@ -247,7 +247,13 @@ def run_naive_seasonal(y, windows, period=365):
     preds = []
     for w in windows:
         o, e = w['origin'], w['end']
-        preds.append([vals[t - period] if t - period >= 0 else vals[o - 1] for t in range(o, e)])
+        row = []
+        for t in range(o, e):
+            lag = t - period
+            while lag >= o:  # jangan memakai harga di dalam jendela prakiraan (periode < horizon)
+                lag -= period
+            row.append(vals[lag] if lag >= 0 else vals[o - 1])
+        preds.append(row)
     return _assemble(y, windows, preds)
 
 
