@@ -4,6 +4,7 @@ Agri-AI EWS v2.0: Multi-Page Streamlit Application Entry Point.
 Router st.navigation: menjalankan setup bersama (tema, database, scheduler) lalu halaman terpilih.
 """
 import streamlit as st
+import pandas as pd
 import os
 import sys
 
@@ -29,6 +30,10 @@ def init_database():
     csv_file = os.path.join(os.path.dirname(__file__), "food_prices_real.csv")
     if os.path.exists(csv_file):
         store.migrate_from_csv(csv_file)
+    # Data setelah CSV beku, hasil scripts/ekspor_data_terbaru.py. Duplikat diabaikan.
+    latest_file = os.path.join(os.path.dirname(__file__), "data", "prices_latest.csv")
+    if os.path.exists(latest_file):
+        store.insert_prices(pd.read_csv(latest_file).to_dict('records'))
     return store
 
 @st.cache_resource
