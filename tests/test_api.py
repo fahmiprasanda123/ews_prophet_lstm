@@ -169,3 +169,91 @@ class TestForecastEndpoints:
         assert 'models' in data
         assert 'best_model' in data
 
+
+
+class TestRegressions:
+    def test_prices_limit_must_be_positive(self, client):
+        assert client.get("/api/data/prices?limit=-5").status_code == 422
+        assert client.get("/api/data/prices?limit=0").status_code == 422
+
+    def test_prices_invalid_date_rejected(self, client):
+        assert client.get("/api/data/prices?start_date=bukan-tanggal").status_code == 422
+
+    def test_prices_date_filter_consistent_between_paths(self, client):
+        q = "start_date=2025-1-5&end_date=2025-1-10&limit=5000"
+        sql_path = client.get(f"/api/data/prices?province=DKI+Jakarta&commodity=Beras&{q}").json()
+        pd_path = client.get(f"/api/data/prices?province=DKI+Jakarta&{q}").json()
+        pd_beras = [r for r in pd_path if r['commodity'] == 'Beras']
+        assert len(sql_path) == 6
+        assert [r['date'] for r in sql_path] == [r['date'] for r in pd_beras]
+        assert sql_path[0]['date'] == '2025-01-05'
+
+    def test_forecast_unknown_and_hybrid_model_return_400(self, client):
+        for m in ("invalid", "hybrid"):
+            r = client.get(f"/api/forecast?province=DKI+Jakarta&commodity=Beras&model={m}")
+            assert r.status_code == 400, m
+
+    def test_models_compare_unknown_series_404(self, client):
+        r = client.get("/api/models/compare?province=Atlantis&commodity=Beras")
+        assert r.status_code == 404
+
+    def test_models_compare_all_fail_500_with_errors(self, client):
+        with patch('models.prophet_forecast.FoodPriceProphet.prepare_data', side_effect=RuntimeError("p-fail")), \
+             patch('models.lstm_forecast.LSTMForecaster.prepare_data', side_effect=RuntimeError("l-fail")):
+            r = client.get("/api/models/compare?province=DKI+Jakarta&commodity=Beras")
+        assert r.status_code == 500
+        errors = r.json()['detail']['errors']
+        assert 'p-fail' in errors['Prophet'] and 'l-fail' in errors['LSTM']
+
+    def _sync_with_result(self, client, result, count=0):
+        def fake_run_once(self):
+            self.last_result = result
+            return count
+        with patch('data.scheduler.DataSyncScheduler.run_once', fake_run_once):
+            return client.post("/api/data/sync")
+
+    def test_sync_reports_error(self, client):
+        r = self._sync_with_result(client, {'status': 'error', 'message': 'Semua 34 provinsi gagal', 'failed': []})
+        assert r.status_code == 200
+        assert r.json()['status'] == 'error'
+        assert 'gagal' in r.json()['message']
+
+    def test_sync_reports_partial(self, client):
+        r = self._sync_with_result(client, {'status': 'partial', 'message': '1 dari 34 provinsi gagal', 'failed': []}, 10)
+        assert r.json()['status'] == 'partial'
+        assert r.json()['records_added'] == 10
+
+    def test_sync_busy_returns_409(self, client):
+        r = self._sync_with_result(client, {'status': 'busy', 'message': '', 'failed': []})
+        assert r.status_code == 409
+
+
+def test_ews_trend_uses_calendar_days():
+    """Tren 7 hari dihitung dari harga terakhir pada/sebelum tanggal terakhir - 7 hari."""
+    import pandas as pd
+    from unittest.mock import MagicMock
+    from api.routers import forecast as fc
+
+    # Hanya hari kerja: iloc[-7] akan jatuh 9 hari kalender ke belakang
+    dates = pd.bdate_range('2025-01-01', '2025-01-31')
+    prices = [10000 + 100 * i for i in range(len(dates))]
+    df = pd.DataFrame({'date': dates, 'province': 'Aceh', 'commodity': 'Beras', 'price': prices})
+    store = MagicMock()
+    store.load_all.return_value = df
+    captured = {}
+
+    class FakeEWS:
+        def __init__(self, data):
+            pass
+
+        def calculate_composite_score(self, prov, comm, predicted):
+            captured['predicted'] = predicted
+            return {'level': 'Normal'}
+
+    with patch.object(fc, 'get_store', return_value=store), \
+         patch('engine.ews_engine_v2.EWSEngineV2', FakeEWS):
+        fc.get_ews_status(commodity=None)
+
+    last = df.iloc[-1]
+    ref = df[df['date'] <= last['date'] - pd.Timedelta(days=7)]['price'].iloc[-1]
+    assert captured['predicted'] == pytest.approx(last['price'] * (1 + (last['price'] - ref) / ref))

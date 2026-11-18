@@ -8,6 +8,8 @@ Bobot Smart Ensemble diambil dari hasil pencarian grid pada periode validasi.
 """
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -15,6 +17,8 @@ from models.evaluation_protocol import (
     DEFAULT_CONFIG, PROPHET_REGRESSORS, TFT_KNOWN_REALS, TFT_UNKNOWN_REALS, _fit_prophet, derive_covariates,
     exante_covariates, merge_config, prepare_series, quiet_libraries, set_seed, train_bilstm,
 )
+
+logger = logging.getLogger(__name__)
 
 BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 
@@ -29,7 +33,9 @@ def forecast_path(df, province, commodity, horizon=30, config=None, covariates_r
 
     Returns:
         dict: path (DataFrame per tanggal: tiap model, Smart Ensemble, batas bawah/atas, fallback),
-        last_date, last_price, weights, covariates_used, province, commodity.
+        last_date, last_price, weights, covariates_used, province, commodity, ensemble_models
+        (model yang benar-benar menyusun Smart Ensemble), bound_models (model penyusun batas
+        interval), enso_lag_days, notes (model yang gagal/dilewati).
     """
     quiet_libraries()
     cfg = merge_config(config)
@@ -46,6 +52,7 @@ def forecast_path(df, province, commodity, horizon=30, config=None, covariates_r
     cov_full = exante_covariates(cov, full[0], full) if cov is not None else None
     out = pd.DataFrame(index=idx)
     bounds = {}
+    notes = []
 
     # Metode konvensional (pembanding)
     p = cfg['seasonal_period']
@@ -65,8 +72,9 @@ def forecast_path(df, province, commodity, horizon=30, config=None, covariates_r
             fit = ARIMA(vals, order=tuple(cfg['arima_order']), enforce_stationarity=False,
                         enforce_invertibility=False).fit()
         out['ARIMA(5,1,0)'] = np.clip(np.asarray(fit.forecast(steps=H)), 0, None)
-    except Exception:
-        pass
+    except Exception as exc:
+        notes.append(f'ARIMA gagal: {exc}')
+        logger.warning(f'ARIMA gagal: {exc}')
 
     # Prophet
     report('Melatih Prophet…', 0.1)
@@ -106,21 +114,41 @@ def forecast_path(df, province, commodity, horizon=30, config=None, covariates_r
             res = tft.forecast_future(frame, dataset, future_covariates=cov_full)
             out['TFT'] = np.asarray(res['mean'])[:H]
             bounds['TFT'] = (np.asarray(res['lower'])[:H], np.asarray(res['upper'])[:H])
-    except Exception:
-        pass
+        else:
+            notes.append('TFT dilewati: pytorch-forecasting belum terpasang.')
+            logger.warning(notes[-1])
+    except Exception as exc:
+        notes.append(f'TFT gagal: {exc}')
+        logger.warning(f'TFT gagal: {exc}')
 
     # Smart Ensemble dengan bobot hasil validasi (+ fallback)
     report('Menggabungkan…', 0.9)
+    ensemble_models, bound_models = [], []
     if weights:
         from models.ensemble import SmartEnsemble
         ens = SmartEnsemble()
         ens.weights = {k: float(v) for k, v in weights.items() if k in out.columns}
+        missing = [k for k, v in weights.items() if float(v) > 0 and k not in out.columns]
+        if missing:
+            notes.append(f"Smart Ensemble tanpa {', '.join(missing)}; bobot dinormalisasi ulang atas "
+                         f"{', '.join(ens.weights)}.")
+            logger.warning(notes[-1])
+        if not ens.weights:
+            raise ValueError('Tidak ada model penyusun Smart Ensemble yang berhasil.')
         ens.best_single = best_single if best_single in ens.weights else max(ens.weights, key=ens.weights.get)
         combined, flag = ens.combine_series({k: out[k] for k in ens.weights},
                                             fallback_cv=cfg['ensemble']['fallback_cv'])
         out['Smart Ensemble'] = combined.reindex(idx).values
         out['fallback'] = flag.reindex(idx).fillna(False).values
-        pos = {k: w for k, w in ens.weights.items() if w > 0 and k in bounds}
+        ensemble_models = [k for k, w in ens.weights.items() if w > 0]
+        # Batas interval yang mengandung NaN (kuantil TFT tidak tersedia) tidak ikut dirata-rata.
+        nan_bounds = [k for k in ensemble_models if k in bounds
+                      and (np.isnan(bounds[k][0]).any() or np.isnan(bounds[k][1]).any())]
+        if nan_bounds:
+            notes.append(f"Batas interval {', '.join(nan_bounds)} tidak tersedia; tidak ikut dirata-rata.")
+            logger.warning(notes[-1])
+        pos = {k: w for k, w in ens.weights.items() if w > 0 and k in bounds and k not in nan_bounds}
+        bound_models = list(pos)
         if pos:
             tot = sum(pos.values())
             out['Batas bawah'] = sum(w * bounds[k][0] for k, w in pos.items()) / tot
@@ -129,7 +157,8 @@ def forecast_path(df, province, commodity, horizon=30, config=None, covariates_r
     report('Selesai.', 1.0)
     return {'path': out, 'last_date': y.index[-1], 'last_price': float(vals[-1]), 'weights': weights,
             'covariates_used': cov is not None, 'province': province, 'commodity': commodity,
-            'data_info': info}
+            'data_info': info, 'ensemble_models': ensemble_models, 'bound_models': bound_models,
+            'enso_lag_days': cfg['enso_lag_days'], 'notes': notes}
 
 
 def aggregate_forecast(path, freq='D'):

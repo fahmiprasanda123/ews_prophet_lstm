@@ -22,8 +22,11 @@ class ConventionalForecaster:
     def __init__(self, df):
         """
         Args:
-            df: DataFrame with columns: date, province, commodity, price.
+            df: DataFrame with columns: date, province, commodity, price. None bila
+                hanya metode *_multi_step (larik harga langsung) yang dipakai.
         """
+        if df is None:
+            df = pd.DataFrame(columns=['date', 'province', 'commodity', 'price'])
         self.df = df.copy()
         self.df['date'] = pd.to_datetime(self.df['date'])
 
@@ -204,10 +207,16 @@ class ConventionalForecaster:
     # Multi-step forecast for backtesting
     # -----------------------------------------------------------------
     def naive_multi_step(self, train_prices, steps, seasonal_period=365):
-        """Multi-step Naïve Seasonal forecast for backtesting folds."""
+        """Multi-step Naïve Seasonal forecast for backtesting folds.
+
+        Bila seasonal_period > panjang data latih, lag tidak tersedia dan hasilnya
+        sama dengan naive nilai terakhir.
+        """
         preds = []
         for i in range(steps):
             idx = len(train_prices) - seasonal_period + i
+            while seasonal_period > 0 and idx >= len(train_prices):  # periode < horizon: ulangi siklus
+                idx -= seasonal_period
             if 0 <= idx < len(train_prices):
                 preds.append(train_prices[idx])
             else:

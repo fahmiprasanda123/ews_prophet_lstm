@@ -1,5 +1,7 @@
 # Tema terang/gelap kustom, font, st.navigation, dan width="stretch" (diuji di 1.56)
-streamlit>=1.56.0
+streamlit>=1.56.0; python_version >= "3.10"
+# Python 3.9 (lokal) berhenti di 1.50: [theme.light]/[theme.dark] diabaikan, aplikasi tetap jalan.
+streamlit>=1.50.0,<1.51; python_version < "3.10"
 pandas>=2.0.0
 # PyTorch untuk Intel Mac berhenti di 2.2.2, yang dikompilasi untuk NumPy 1.x.
 # Dengan NumPy 2 muncul "RuntimeError: Numpy is not available" (BiLSTM/TFT gagal).

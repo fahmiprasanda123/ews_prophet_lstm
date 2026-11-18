@@ -15,7 +15,7 @@ from engine.chatbot_engine import ChatbotEngine
 st.set_page_config(page_title="Chatbot | Agri-AI EWS", page_icon="🌾", layout="wide")
 
 # --- Theme ---
-from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, render_footer, apply_theme_to_plotly, CHART
+from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, render_footer, apply_theme_to_plotly, CHART, PLOTLY_STRETCH
 inject_theme_css()
 
 # --- Initialize ---
@@ -80,12 +80,15 @@ if not st.session_state.chat_messages:
     st.divider()
 
 # --- Helper Functions (defined before use) ---
-def _render_chart(chart_data, chart_type, chart_title):
+def _render_chart(chart_data, chart_type, chart_title, key):
     """Render a Plotly chart from chatbot response data."""
     if chart_data is None or chart_data.empty:
         return
 
-    if chart_type == "compare_line":
+    if chart_type == "line":
+        fig = px.line(chart_data, x="date", y="price", title=chart_title)
+        fig.update_traces(line=dict(color=CHART["actual"], width=2))
+    elif chart_type == "compare_line":
         fig = px.line(
             chart_data,
             x="date",
@@ -140,6 +143,9 @@ def _render_chart(chart_data, chart_type, chart_title):
                 line=dict(color=CHART["forecast"], width=2, dash="dot"),
                 marker=dict(size=3),
             ))
+    else:
+        # Tipe grafik tak dikenal: lewati saja agar riwayat chat tetap tampil
+        return
 
     apply_theme_to_plotly(
         fig,
@@ -149,7 +155,7 @@ def _render_chart(chart_data, chart_type, chart_title):
         xaxis_title="",
         yaxis_title="Harga (Rp)",
     )
-    st.plotly_chart(fig, width="stretch", key=f"chart_{id(chart_data)}")
+    st.plotly_chart(fig, **PLOTLY_STRETCH, key=key)
 
 
 def _process_and_store(user_input: str):
@@ -175,13 +181,14 @@ def _process_and_store(user_input: str):
 
 
 # --- Render Chat History ---
-for message in st.session_state.chat_messages:
+for msg_idx, message in enumerate(st.session_state.chat_messages):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
         # Render chart if present
         if message.get("chart_data") is not None and message.get("chart_type"):
-            _render_chart(message["chart_data"], message["chart_type"], message.get("chart_title", ""))
+            _render_chart(message["chart_data"], message["chart_type"], message.get("chart_title", ""),
+                          key=f"chart_{msg_idx}")
 
 # Handle pending quick action
 if st.session_state.pending_quick_action:

@@ -18,7 +18,7 @@ st.set_page_config(page_title="Laporan | Agri-AI EWS", page_icon="🌾", layout=
 from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, status_chip, EWS_LEVEL_STATUS, EWS_LEVEL_LABEL
 inject_theme_css()
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_data():
     store = get_store()
     df = store.load_all()
@@ -45,13 +45,19 @@ rpt_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique(
 st.title("Laporan")
 st.markdown(f"Laporan untuk **{rpt_commodity}** di **{rpt_province}**. Ganti provinsi dan komoditas di sidebar.")
 
+rpt_series = df[(df['province'] == rpt_province) & (df['commodity'] == rpt_commodity)].sort_values('date')
+NO_DATA_MSG = (f"Data harga {rpt_commodity} di {rpt_province} belum tersedia. "
+               "Pilih provinsi atau komoditas lain di sidebar.")
+
 tab1, tab2, tab3 = st.tabs(["Laporan PDF", "Ekspor Excel", "Pratinjau data"])
 
 # --- Tab 1: PDF Report ---
 with tab1:
     st.markdown("Berisi status EWS, prakiraan harga 30 hari (Prophet), risiko pasokan, metrik akurasi, dan rekomendasi tindakan.")
 
-    if st.button("Buat laporan PDF", key="gen_pdf"):
+    if rpt_series.empty:
+        st.info(NO_DATA_MSG)
+    elif st.button("Buat laporan PDF", key="gen_pdf"):
         with st.spinner("Melatih Prophet dan menyusun laporan PDF..."):
             try:
                 from engine.ews_engine_v2 import EWSEngineV2
@@ -61,8 +67,8 @@ with tab1:
                 from prophet import Prophet
 
                 # Get current price
-                series = df[(df['province'] == rpt_province) & (df['commodity'] == rpt_commodity)].sort_values('date')
-                current_price = series['price'].iloc[-1]
+                current_price = rpt_series['price'].iloc[-1]
+                current_date = rpt_series['date'].iloc[-1]
 
                 # Run forecast
                 fp = FoodPriceProphet(df)
@@ -124,7 +130,7 @@ with tab1:
                 pc2.metric("Skor EWS", f"{ews_result['score']}/100")
 
                 pc3, pc4 = st.columns(2)
-                pc3.metric("Harga saat ini", f"IDR {current_price:,.0f}")
+                pc3.metric(f"Harga terakhir {current_date:%d-%m-%Y}", f"IDR {current_price:,.0f}")
                 pc4.metric(f"Harga prediksi {target_date:%d-%m-%Y}", f"IDR {predicted_price:,.0f}")
 
                 # Narrative Preview
@@ -165,7 +171,12 @@ with tab2:
 
     export_scope = st.radio("Cakupan data", ["Komoditas & Provinsi Terpilih", "Semua Komoditas (Provinsi Terpilih)", "Semua Data"])
 
-    if st.button("Buat file Excel", key="gen_excel"):
+    # Saat baru satu tanggal dipilih, date_input mengembalikan 1 nilai; jangan ekspor seluruh riwayat diam-diam
+    range_complete = isinstance(date_range, (list, tuple)) and len(date_range) == 2
+    if not range_complete:
+        st.info("Pilih tanggal awal dan tanggal akhir pada kalender untuk melengkapi rentang.")
+
+    if st.button("Buat file Excel", key="gen_excel", disabled=not range_complete):
         with st.spinner("Menyusun file Excel..."):
             try:
                 if export_scope == "Komoditas & Provinsi Terpilih":
@@ -178,9 +189,8 @@ with tab2:
                 else:
                     export_df = df.copy()
 
-                if len(date_range) == 2:
-                    start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
-                    export_df = export_df[(export_df['date'] >= start) & (export_df['date'] <= end)]
+                start, end = pd.Timestamp(date_range[0]), pd.Timestamp(date_range[1])
+                export_df = export_df[(export_df['date'] >= start) & (export_df['date'] <= end)]
 
                 if export_df.empty:
                     raise LookupError("rentang kosong")
@@ -228,11 +238,11 @@ with tab2:
 # --- Tab 3: Data Preview ---
 with tab3:
     st.markdown("100 data harga terbaru.")
+    if rpt_series.empty:
+        st.info(NO_DATA_MSG)
+        st.stop()
 
-    preview_data = df[
-        (df['province'] == rpt_province) & 
-        (df['commodity'] == rpt_commodity)
-    ].sort_values('date', ascending=False).head(100)
+    preview_data = rpt_series.sort_values('date', ascending=False).head(100)
 
     preview_data_display = preview_data.copy()
     preview_data_display['date'] = preview_data_display['date'].dt.strftime('%Y-%m-%d')
@@ -243,7 +253,7 @@ with tab3:
     # Quick stats
     cs1, cs2, cs3, cs4 = st.columns(4)
     prices = preview_data['price']
-    cs1.metric("Terakhir", f"IDR {prices.iloc[0]:,.0f}")
+    cs1.metric(f"Terakhir ({preview_data['date'].iloc[0]:%d %b %Y})", f"IDR {prices.iloc[0]:,.0f}")
     cs2.metric("Rata-rata 100 data", f"IDR {prices.mean():,.0f}")
     cs3.metric("Terendah", f"IDR {prices.min():,.0f}")
     cs4.metric("Tertinggi", f"IDR {prices.max():,.0f}")

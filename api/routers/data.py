@@ -5,10 +5,22 @@ from fastapi import APIRouter, HTTPException, Query
 from typing import Optional, List
 from datetime import datetime
 
+import pandas as pd
+
 from api.schemas import PriceRecord, DataStatsResponse, SyncResponse, SupplyRiskResponse
 from data.database import get_store
 
 router = APIRouter(prefix="/api/data", tags=["Data"])
+
+
+def _parse_date(value: Optional[str], name: str) -> Optional[str]:
+    """Normalisasi tanggal ke YYYY-MM-DD agar filter SQL dan pandas konsisten."""
+    if not value:
+        return None
+    try:
+        return pd.Timestamp(value).strftime('%Y-%m-%d')
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=422, detail=f"Invalid {name}: {value!r} (use YYYY-MM-DD)")
 
 
 @router.get("/prices", response_model=List[PriceRecord])
@@ -17,11 +29,13 @@ def get_prices(
     commodity: str = Query(None),
     start_date: str = Query(None),
     end_date: str = Query(None),
-    limit: int = Query(100, le=5000),
+    limit: int = Query(100, ge=1, le=5000),
 ):
     """Get historical price data with optional filters."""
     store = get_store()
-    
+    start_date = _parse_date(start_date, "start_date")
+    end_date = _parse_date(end_date, "end_date")
+
     if province and commodity:
         df = store.get_series(province, commodity, start_date, end_date)
         df['province'] = province
@@ -33,13 +47,13 @@ def get_prices(
         if commodity:
             df = df[df['commodity'] == commodity]
         if start_date:
-            df = df[df['date'] >= start_date]
+            df = df[df['date'] >= pd.Timestamp(start_date)]
         if end_date:
-            df = df[df['date'] <= end_date]
+            df = df[df['date'] <= pd.Timestamp(end_date)]
 
-    df = df.tail(limit)
-    df['date'] = df['date'].astype(str)
-    
+    df = df.tail(limit).copy()
+    df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
+
     return df[['date', 'province', 'commodity', 'price']].to_dict('records')
 
 
@@ -82,17 +96,28 @@ def trigger_sync():
         from data.scheduler import DataSyncScheduler
         scheduler = DataSyncScheduler(store)
         count = scheduler.run_once()
-        return SyncResponse(
-            status="ok",
-            records_added=count,
-            message=f"Sync complete. {count} records added.",
-        )
     except Exception as e:
         return SyncResponse(
             status="error",
             records_added=0,
             message=f"Sync failed: {str(e)}",
         )
+
+    result = scheduler.last_result or {"status": "ok"}
+    status = result.get("status", "ok")
+    if status == "busy":
+        raise HTTPException(status_code=409, detail="Sync already running. Try again later.")
+    if status in ("error", "partial"):
+        return SyncResponse(
+            status=status,
+            records_added=count,
+            message=f"Sync {status}: {result.get('message')}. {count} records added/updated.",
+        )
+    return SyncResponse(
+        status="ok",
+        records_added=count,
+        message=f"Sync complete. {count} records added/updated.",
+    )
 
 
 @router.get("/supply-risk", response_model=SupplyRiskResponse)

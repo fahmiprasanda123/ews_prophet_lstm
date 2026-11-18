@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import requests
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,20 @@ PROVINCE_COORDS = {
     "Papua":                        (-2.54, 140.72),
     "Papua Barat":                  (-0.86, 134.06),
 }
+
+# Hari terakhir yang belum tentu ada di archive API; bagian ini diambil dari forecast API.
+_ARCHIVE_LAG_DAYS = 5
+# Batas past_days pada forecast API Open-Meteo.
+_FORECAST_MAX_PAST_DAYS = 92
+_FORECAST_MAX_DAYS = 16
+# Celah data hilang terpanjang (hari) yang masih boleh diisi nilai tetangga.
+_MAX_GAP_DAYS = 3
+
+
+def _normalize_dates(dates) -> pd.DatetimeIndex:
+    """Buang jam dari tanggal (mis. dari Timestamp.now()) agar cocok dengan data harian."""
+    return pd.DatetimeIndex(dates).normalize()
+
 
 # Seasonal fallback (for when API fails)
 _SEASONAL_RAINFALL = {
@@ -104,6 +118,7 @@ class WeatherClient:
         
         Returns a Series indexed by date with rainfall in mm.
         """
+        dates = _normalize_dates(dates)
         if self.use_live:
             try:
                 weather = self._fetch_open_meteo(province, dates)
@@ -120,6 +135,7 @@ class WeatherClient:
         
         Returns a Series indexed by date with temperature in °C.
         """
+        dates = _normalize_dates(dates)
         if self.use_live:
             try:
                 weather = self._fetch_open_meteo(province, dates)
@@ -140,6 +156,7 @@ class WeatherClient:
         
         Positive = El Niño (drought risk), Negative = La Niña (flood risk).
         """
+        dates = _normalize_dates(dates)
         try:
             return self._fetch_noaa_enso(dates)
         except Exception as e:
@@ -152,6 +169,7 @@ class WeatherClient:
         
         Columns: rainfall_mm, temperature_c, enso_index, is_wet_season
         """
+        dates = _normalize_dates(dates)
         rainfall = self.get_rainfall(province, dates)
         temperature = self.get_temperature(province, dates)
         enso = self.get_enso_index(dates)
@@ -175,8 +193,12 @@ class WeatherClient:
     # ------------------------------------------------------------------ #
     def _fetch_open_meteo(self, province: str, dates: pd.DatetimeIndex) -> pd.DataFrame:
         """Fetch historical weather data from Open-Meteo API.
-        
+
         Free, no API key required, covers Indonesia from 1940-present.
+        Tanggal lama diambil dari archive API, beberapa hari terakhir (dan masa
+        depan) dari forecast API. Mengembalikan None bila data nyata tidak menutup
+        seluruh tanggal yang diminta (celah > _MAX_GAP_DAYS hari), agar pemanggil
+        memakai jalur fallback/strict alih-alih nilai konstan buatan.
         """
         coords = PROVINCE_COORDS.get(province)
         if coords is None:
@@ -184,65 +206,54 @@ class WeatherClient:
             return None
 
         lat, lon = coords
+        dates = _normalize_dates(dates)
 
         # Check cache
         cache_key = f"{province}_{dates.min().date()}_{dates.max().date()}"
         if cache_key in self._cache:
             return self._cache[cache_key]
 
-        start_date = dates.min().strftime('%Y-%m-%d')
-        end_date = dates.max().strftime('%Y-%m-%d')
-
-        # Determine which API to use based on date range
-        today = datetime.now().date()
-        end_dt = dates.max().date() if hasattr(dates.max(), 'date') else dates.max()
-
-        if end_dt >= today - timedelta(days=5):
-            # Use forecast API for recent/future dates
-            url = self.FORECAST_URL
-            params = {
-                'latitude': lat,
-                'longitude': lon,
-                'daily': 'precipitation_sum,temperature_2m_mean',
-                'timezone': 'Asia/Jakarta',
-                'past_days': min(92, (today - dates.min().date()).days) if dates.min().date() < today else 0,
-                'forecast_days': 7,
-            }
-        else:
-            # Use archive API for historical dates
-            url = self.ARCHIVE_URL
-            params = {
-                'latitude': lat,
-                'longitude': lon,
-                'start_date': start_date,
-                'end_date': end_date,
-                'daily': 'precipitation_sum,temperature_2m_mean',
-                'timezone': 'Asia/Jakarta',
-            }
+        start_dt = dates.min().date()
+        end_dt = dates.max().date()
+        today = datetime.now(timezone(timedelta(hours=7))).date()
+        archive_end = today - timedelta(days=_ARCHIVE_LAG_DAYS + 1)
+        base = {
+            'latitude': lat,
+            'longitude': lon,
+            'daily': 'precipitation_sum,temperature_2m_mean',
+            'timezone': 'Asia/Jakarta',
+        }
 
         try:
-            response = requests.get(url, params=params, timeout=15)
-            response.raise_for_status()
-            data = response.json()
+            parts = []
+            if start_dt <= archive_end:
+                parts.append(self._request_daily(self.ARCHIVE_URL, dict(
+                    base,
+                    start_date=start_dt.strftime('%Y-%m-%d'),
+                    end_date=min(end_dt, archive_end).strftime('%Y-%m-%d'),
+                )))
+            if end_dt > archive_end:
+                recent_start = max(start_dt, archive_end + timedelta(days=1))
+                parts.append(self._request_daily(self.FORECAST_URL, dict(
+                    base,
+                    past_days=min(_FORECAST_MAX_PAST_DAYS, max(0, (today - recent_start).days)),
+                    forecast_days=min(_FORECAST_MAX_DAYS, max(1, (end_dt - today).days + 1)),
+                )))
 
-            if 'daily' not in data:
-                logger.warning(f"No daily data in Open-Meteo response for {province}")
+            result = pd.concat(parts)
+            result = result[~result.index.duplicated(keep='first')].sort_index()
+            result = result.reindex(dates)
+
+            # Hanya celah pendek yang diisi; celah panjang berarti data nyata tidak tersedia.
+            na = result.isna().any(axis=1)
+            longest_gap = int(na.groupby((~na).cumsum()).sum().max()) if na.any() else 0
+            if longest_gap > _MAX_GAP_DAYS:
+                logger.warning(
+                    f"Open-Meteo data for {province} does not cover {start_dt}..{end_dt} "
+                    f"({int(na.sum())} of {len(dates)} days missing, longest gap {longest_gap})"
+                )
                 return None
-
-            daily = data['daily']
-            result = pd.DataFrame({
-                'date': pd.to_datetime(daily['time']),
-                'precipitation_sum': daily.get('precipitation_sum', [None] * len(daily['time'])),
-                'temperature_2m_mean': daily.get('temperature_2m_mean', [None] * len(daily['time'])),
-            })
-            result = result.set_index('date')
-            
-            # Fill NaN with 0 for precipitation
-            result['precipitation_sum'] = result['precipitation_sum'].fillna(0)
-            result['temperature_2m_mean'] = result['temperature_2m_mean'].fillna(27.5)
-
-            # Reindex to match requested dates (some may be missing)
-            result = result.reindex(dates).ffill().bfill()
+            result = result.interpolate(limit_area='inside').ffill().bfill()
 
             # Cache the result
             self._cache[cache_key] = result
@@ -260,15 +271,32 @@ class WeatherClient:
             logger.warning(f"Open-Meteo error for {province}: {e}")
             return None
 
+    def _request_daily(self, url: str, params: dict) -> pd.DataFrame:
+        """Satu permintaan Open-Meteo -> DataFrame harian; nilai null dibiarkan NaN."""
+        response = requests.get(url, params=params, timeout=15)
+        response.raise_for_status()
+        data = response.json()
+        if 'daily' not in data:
+            raise ValueError("No daily data in Open-Meteo response")
+        daily = data['daily']
+        n = len(daily['time'])
+        result = pd.DataFrame({
+            'date': pd.to_datetime(daily['time']),
+            'precipitation_sum': pd.to_numeric(pd.Series(daily.get('precipitation_sum', [None] * n)), errors='coerce'),
+            'temperature_2m_mean': pd.to_numeric(pd.Series(daily.get('temperature_2m_mean', [None] * n)), errors='coerce'),
+        })
+        return result.set_index('date')
+
     # ------------------------------------------------------------------ #
     # NOAA ENSO (public, no API key)
     # ------------------------------------------------------------------ #
     def _fetch_noaa_enso(self, dates: pd.DatetimeIndex) -> pd.Series:
         """Fetch ENSO ONI data from NOAA (publicly available)."""
         if self._enso_cache is not None:
-            cached = self._enso_cache.reindex(dates, method='ffill').fillna(0)
-            if not cached.isna().all():
-                return cached
+            # Pakai cache hanya bila menutup semua tanggal; bila tidak, unduh ulang.
+            cached = self._enso_cache.reindex(dates, method='ffill')
+            if not cached.isna().any():
+                return cached.rename('enso_index')
 
         url = "https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt"
         response = requests.get(url, timeout=15)

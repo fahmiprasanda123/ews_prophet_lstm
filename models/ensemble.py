@@ -70,10 +70,11 @@ class SmartEnsemble:
             mean_val = np.atleast_1d(pred['mean'])
             means.append(w * mean_val)
 
-            if pred.get('lower') is not None:
-                lowers.append(np.atleast_1d(pred['lower']))
-            if pred.get('upper') is not None:
-                uppers.append(np.atleast_1d(pred['upper']))
+            # Batas yang seluruhnya NaN (mis. kuantil TFT tidak tersedia) tidak ikut digabung.
+            if pred.get('lower') is not None and not np.isnan(np.atleast_1d(pred['lower']).astype(float)).all():
+                lowers.append(np.atleast_1d(pred['lower']).astype(float))
+            if pred.get('upper') is not None and not np.isnan(np.atleast_1d(pred['upper']).astype(float)).all():
+                uppers.append(np.atleast_1d(pred['upper']).astype(float))
 
         # Weighted mean
         # Align lengths (use shortest)
@@ -82,12 +83,12 @@ class SmartEnsemble:
 
         # Confidence interval: take widest bounds across models
         if lowers:
-            ensemble_lower = np.min([l[:min_len] for l in lowers], axis=0)
+            ensemble_lower = np.nanmin([l[:min_len] for l in lowers], axis=0)
         else:
             ensemble_lower = ensemble_mean * 0.90
 
         if uppers:
-            ensemble_upper = np.max([u[:min_len] for u in uppers], axis=0)
+            ensemble_upper = np.nanmax([u[:min_len] for u in uppers], axis=0)
         else:
             ensemble_upper = ensemble_mean * 1.10
 
@@ -136,6 +137,9 @@ class SmartEnsemble:
         actual = val_actual.reindex(frame.index)
         keep = actual.notna()
         frame, actual = frame[keep], actual[keep]
+        if frame.empty:
+            raise ValueError("Pencarian bobot gagal: tidak ada hari validasi dengan prediksi semua model "
+                             "dan harga aktual.")
 
         scores = {m: calculate_metrics(actual.values, frame[m].values, m)[metric] for m in names}
         n_steps = int(round(1 / step))
@@ -147,6 +151,9 @@ class SmartEnsemble:
             score = calculate_metrics(actual.values, frame.values @ w)[metric]
             if score < best_score - 1e-12:
                 best_score, best_w = score, w
+        if best_w is None:
+            raise ValueError("Pencarian bobot gagal: skor validasi tidak terdefinisi untuk semua kombinasi "
+                             f"(hari validasi yang sejajar: {len(frame)}).")
 
         self.weights = {m: float(w) for m, w in zip(names, best_w)}
         self.validation_scores = scores

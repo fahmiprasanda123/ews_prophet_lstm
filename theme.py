@@ -8,6 +8,7 @@ dimiliki Streamlit: chip status, kartu EWS, panel, dan footer. Semua warnanya
 dipilih agar lolos WCAG AA di kedua tema, jadi tidak perlu tahu tema aktif.
 """
 import html
+import inspect
 
 import streamlit as st
 import plotly.graph_objects as go
@@ -33,6 +34,11 @@ CHART = {
     "compare": "#4E7BA8",
     "reference": "#7A847E",
 }
+
+# st.plotly_chart: `width` baru menjadi parameter resmi setelah Streamlit 1.50. Di versi lama
+# ia masuk **kwargs dan memicu peringatan "keyword arguments deprecated"; use_container_width
+# bawaannya sudah True, jadi cukup dihilangkan.
+PLOTLY_STRETCH = {"width": "stretch"} if "width" in inspect.signature(st.plotly_chart).parameters else {}
 
 FONT_FAMILY = "IBM Plex Sans, sans-serif"
 

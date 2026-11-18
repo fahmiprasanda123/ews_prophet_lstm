@@ -2,7 +2,7 @@
 Pydantic schemas for the Agri-AI EWS REST API.
 """
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import date
 
 
@@ -84,6 +84,8 @@ class ModelComparisonResponse(BaseModel):
     commodity: str
     models: List[ModelMetrics]
     best_model: str
+    # Model yang gagal dievaluasi beserta pesan errornya
+    errors: Dict[str, str] = Field(default_factory=dict)
 
 
 class SupplyRiskResponse(BaseModel):

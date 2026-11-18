@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 
+from engine.time_windows import price_days_ago
+
 
 class PriceNarrativeAnalyzer:
     """Generates human-readable narratives explaining price predictions."""
@@ -473,10 +475,10 @@ class PriceNarrativeAnalyzer:
         # Calculate short-term trends
         changes = {}
         for label, window in [('7 hari', 7), ('14 hari', 14), ('30 hari', 30)]:
-            if len(prices) >= window:
-                past = prices[-window]
-                if past > 0:
-                    changes[label] = (prices[-1] - past) / past * 100
+            # Hitung mundur per tanggal kalender, bukan per baris data
+            past = price_days_ago(series, window) if 'date' in series.columns else None
+            if past is not None and past > 0:
+                changes[label] = (prices[-1] - past) / past * 100
 
         if not changes:
             return None
@@ -1096,8 +1098,10 @@ class PriceNarrativeAnalyzer:
                 _shift_date(5, 27),  # Eid al-Adha
             ],
             'natal_tahun_baru': [
-                pd.Timestamp(year=year, month=12, day=25),  # Christmas
-                pd.Timestamp(year=year, month=1, day=1),    # New Year
+                pd.Timestamp(year=year - 1, month=12, day=25),  # Natal tahun lalu (target awal Januari)
+                pd.Timestamp(year=year, month=1, day=1),        # New Year
+                pd.Timestamp(year=year, month=12, day=25),      # Christmas
+                pd.Timestamp(year=year + 1, month=1, day=1),    # Tahun Baru berikutnya (target akhir Desember)
             ],
         }
 

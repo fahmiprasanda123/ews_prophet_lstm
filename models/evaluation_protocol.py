@@ -4,8 +4,9 @@ Protokol evaluasi terpadu untuk Agri-AI EWS (dipakai Model Laboratory dan skrip 
 Ringkasan protokol
 ------------------
 1. Deret harga satu kombinasi komoditas-provinsi diubah ke kalender harian.
-   Hari tanpa catatan diisi forward-fill (maks. `ffill_limit` hari); celah yang
-   lebih panjang diinterpolasi linear. Jumlah hari yang diisi dicatat.
+   Hari tanpa catatan diisi forward-fill (maks. `ffill_limit` hari); pada celah yang
+   lebih panjang, `ffill_limit` hari pertama tetap di-forward-fill dan sisa harinya
+   diinterpolasi linear. Jumlah hari yang diisi dicatat.
 2. Split kronologis 80/20: 80% hari pertama = data latih, 20% terakhir = data uji.
 3. Rolling-origin: periode uji dibagi menjadi jendela berurutan sepanjang
    `horizon` hari (bawaan 30). Pada setiap titik asal, model hanya boleh memakai
@@ -122,7 +123,12 @@ def load_frozen_data(csv_path: str, end_date: str | None = None) -> pd.DataFrame
 
 
 def prepare_series(df: pd.DataFrame, province: str, commodity: str, ffill_limit: int = 7):
-    """Deret harga harian kontinu untuk satu kombinasi + ringkasan penanganan celah."""
+    """Deret harga harian kontinu untuk satu kombinasi + ringkasan penanganan celah.
+
+    Hari kosong di-forward-fill maksimal `ffill_limit` hari; bila celah lebih panjang,
+    hari sesudahnya diinterpolasi linear antara nilai hasil forward-fill terakhir dan
+    harga tercatat berikutnya (n_ffilled dan n_interpolated mencatat keduanya).
+    """
     sub = df[(df['province'] == province) & (df['commodity'] == commodity)][['date', 'price']].dropna()
     if sub.empty:
         raise ValueError(f"Tidak ada data untuk {commodity} di {province}.")
@@ -229,6 +235,8 @@ def derive_covariates(raw: pd.DataFrame, index: pd.DatetimeIndex, enso_lag_days:
 def exante_covariates(cov: pd.DataFrame, origin_date, future_dates) -> pd.DataFrame:
     """Nilai kovariat untuk hari >= titik asal tanpa memakai informasi masa depan."""
     hist = cov.loc[:pd.Timestamp(origin_date) - pd.Timedelta(days=1)]
+    if hist.empty:
+        raise ValueError(f"Tidak ada riwayat kovariat sebelum titik asal {pd.Timestamp(origin_date).date()}.")
     out = pd.DataFrame(index=pd.DatetimeIndex(future_dates))
     for col in ['rainfall_30d', 'temperature_30d']:
         if col in cov.columns:
@@ -259,7 +267,13 @@ def run_naive_seasonal(y, windows, period=365):
 
 def run_sma(y, windows, window=30):
     vals = y.values
-    preds = [np.full(w['end'] - w['origin'], vals[w['origin'] - window:w['origin']].mean()) for w in windows]
+    preds = []
+    for w in windows:
+        o = w['origin']
+        if o < 1:
+            raise ValueError("SMA membutuhkan minimal satu hari data sebelum titik asal.")
+        # riwayat < window hari: rata-rata dari seluruh riwayat yang ada
+        preds.append(np.full(w['end'] - o, vals[max(o - window, 0):o].mean()))
     return _assemble(y, windows, preds)
 
 
@@ -424,8 +438,9 @@ def interval_coverage(predictions: dict, y: pd.Series) -> pd.DataFrame:
               'TFT': 'Interval kuantil 2–98% TFT'}
     for name, label in labels.items():
         df = predictions.get(name)
-        if df is None or df['lower'].isna().all():
+        if df is None or df['lower'].isna().all() or df['upper'].isna().all():
             continue
+        df = df.dropna(subset=['lower', 'upper'])  # hari tanpa batas (mis. kuantil TFT gagal) dilewati
         actual = y.reindex(df.index).values
         inside = (actual >= df['lower'].values) & (actual <= df['upper'].values)
         width = (df['upper'].values - df['lower'].values) / actual * 100

@@ -44,3 +44,29 @@ class TestTFTForecaster:
         forecaster = TFTForecaster(max_prediction_length=14, max_encoder_length=60)
         assert forecaster.max_prediction_length == 14
         assert forecaster.max_encoder_length == 60
+
+
+def _tiny_series(start='2024-01-01', days=150, seed=0):
+    idx = pd.date_range(start, periods=days, freq='D')
+    rng = np.random.default_rng(seed)
+    return pd.Series(10000 + np.cumsum(rng.normal(0, 50, days)), index=idx)
+
+
+@pytest.mark.skipif(not TFT_AVAILABLE, reason="pytorch-forecasting not installed")
+class TestTFTShortWindow:
+    def test_unseen_month_in_prediction_window(self):
+        """Jendela latih pendek tanpa bulan September tidak membuat prediksi gagal."""
+        y = _tiny_series(start='2024-03-01', days=200)  # latih s.d. Agustus, prediksi September
+        tft = TFTForecaster(max_prediction_length=30, max_encoder_length=30)
+        frame = tft.build_frame(y, 'Jawa Timur', 'Beras')
+        ds = tft.build_training_dataset(frame, training_cutoff=len(y) - 31)
+        assert set(frame['month'].iloc[-30:]) - set(frame['month'].iloc[:-30])
+        tft.train(ds, max_epochs=1, batch_size=32, hidden_size=8, attention_head_size=1, quiet=True)
+        res = tft.predict(frame, ds)
+        assert len(res['mean']) == 30
+
+    def test_full_year_keeps_default_encoders(self):
+        from models.tft_forecast import _time_encoders
+        frame = TFTForecaster.build_frame(_tiny_series(days=400), 'Jawa Timur', 'Beras')
+        assert _time_encoders(frame) == {}
+        assert set(_time_encoders(frame.iloc[:100])) == {'month'}
