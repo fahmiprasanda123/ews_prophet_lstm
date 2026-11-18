@@ -17,11 +17,27 @@ try:
     import torch
     import lightning.pytorch as pl
     from pytorch_forecasting import TimeSeriesDataSet, TemporalFusionTransformer
-    from pytorch_forecasting.data import GroupNormalizer
+    from pytorch_forecasting.data import GroupNormalizer, NaNLabelEncoder
     from pytorch_forecasting.metrics import QuantileLoss
     TFT_AVAILABLE = True
 except ImportError:
     logger.info("pytorch-forecasting not installed. TFT model unavailable.")
+
+TIME_CATEGORIES = {'month': 12, 'day_of_week': 7}
+
+
+def _time_encoders(train_frame):
+    """Encoder bulan/hari yang menerima kategori baru bila data latih belum memuat semuanya.
+
+    Jendela latih pendek (mis. 180 hari) tidak memuat ke-12 bulan sehingga periode uji
+    bisa jatuh pada bulan yang belum pernah terlihat. Bila semua kategori sudah ada
+    (pelatihan panjang tesis), encoder bawaan dipakai agar hasil tidak berubah.
+    """
+    encoders = {}
+    for col, n_cat in TIME_CATEGORIES.items():
+        if train_frame[col].nunique() < n_cat:
+            encoders[col] = NaNLabelEncoder(add_nan=True, warn=False)
+    return encoders
 
 
 class TFTForecaster:
@@ -97,8 +113,9 @@ class TFTForecaster:
         # bawaan menyisihkan max_prediction_length hari terakhir (jendela uji backtester).
         training_cutoff = max_time_idx if use_all_data else max_time_idx - self.max_prediction_length
 
+        train_part = data[data['time_idx'] <= training_cutoff]
         self.training_dataset = TimeSeriesDataSet(
-            data[data['time_idx'] <= training_cutoff],
+            train_part,
             time_idx='time_idx',
             target='price',
             group_ids=['group_id'],
@@ -106,6 +123,7 @@ class TFTForecaster:
             max_prediction_length=self.max_prediction_length,
             static_categoricals=['province', 'commodity'],
             time_varying_known_categoricals=['month', 'day_of_week'],
+            categorical_encoders=_time_encoders(train_part),
             time_varying_known_reals=time_varying_known,
             time_varying_unknown_reals=['price'],
             target_normalizer=GroupNormalizer(groups=['group_id']),
@@ -155,8 +173,9 @@ class TFTForecaster:
             raise RuntimeError("pytorch-forecasting is not installed.")
         known = ['is_wet_season'] + list(known_reals or [])
         unknown = ['price'] + list(unknown_reals or [])
+        train_part = frame[frame['time_idx'] <= training_cutoff]
         self.training_dataset = TimeSeriesDataSet(
-            frame[frame['time_idx'] <= training_cutoff],
+            train_part,
             time_idx='time_idx',
             target='price',
             group_ids=['group_id'],
@@ -164,6 +183,7 @@ class TFTForecaster:
             max_prediction_length=self.max_prediction_length,
             static_categoricals=['province', 'commodity'],
             time_varying_known_categoricals=['month', 'day_of_week'],
+            categorical_encoders=_time_encoders(train_part),
             time_varying_known_reals=known,
             time_varying_unknown_reals=unknown,
             target_normalizer=GroupNormalizer(groups=['group_id']),

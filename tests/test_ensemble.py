@@ -109,3 +109,35 @@ class TestSmartEnsemble:
         
         # Should be a scalar (single value for day index 1)
         assert not hasattr(result['mean'], '__len__')
+
+
+class TestEnsembleRobustness:
+    def test_nan_bounds_skipped_not_propagated(self):
+        """Batas NaN (kuantil TFT tidak tersedia) tidak membuat batas ensemble NaN."""
+        ens = SmartEnsemble()
+        res = ens.combine_forecasts({
+            'prophet': {'mean': np.array([100., 100.]), 'lower': np.array([90., 91.]),
+                        'upper': np.array([110., 111.])},
+            'tft': {'mean': np.array([102., 102.]), 'lower': np.full(2, np.nan),
+                    'upper': np.full(2, np.nan)},
+        })
+        np.testing.assert_array_almost_equal(res['lower'], [90, 91])
+        np.testing.assert_array_almost_equal(res['upper'], [110, 111])
+        assert 'tft' in res['models_used']
+
+    def test_grid_all_nan_scores_raises_clear_error(self):
+        import pandas as pd
+        idx = pd.date_range('2024-01-01', periods=3)
+        val = {'Prophet': pd.Series([1., 2., 3.], index=idx), 'BiLSTM': pd.Series([1., 2., 3.], index=idx)}
+        actual = pd.Series([np.nan] * 3, index=idx)  # tidak ada hari validasi yang sejajar
+        with pytest.raises(ValueError, match="Pencarian bobot gagal"):
+            SmartEnsemble().fit_weights_grid(val, actual)
+
+    def test_grid_nan_metric_raises_clear_error(self, monkeypatch):
+        import pandas as pd
+        import models.evaluation as ev
+        monkeypatch.setattr(ev, 'calculate_metrics', lambda *a, **k: {'MAPE (%)': float('nan')})
+        idx = pd.date_range('2024-01-01', periods=3)
+        val = {'Prophet': pd.Series([1., 2., 3.], index=idx), 'BiLSTM': pd.Series([1., 2., 3.], index=idx)}
+        with pytest.raises(ValueError, match="skor validasi tidak terdefinisi"):
+            SmartEnsemble().fit_weights_grid(val, pd.Series([1., 2., 3.], index=idx))

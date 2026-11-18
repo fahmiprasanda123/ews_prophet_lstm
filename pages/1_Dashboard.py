@@ -21,6 +21,7 @@ from engine.ews_engine_v2 import EWSEngineV2
 from engine.supply_risk import SupplyRiskScorer
 from engine.price_narrative import PriceNarrativeAnalyzer
 from models.evaluation import calculate_metrics
+from engine.time_windows import pct_change_days, split_stale, stale_caption, STALE_TOLERANCE_DAYS
 try:
     from prophet import Prophet
 except ImportError:
@@ -30,7 +31,7 @@ st.set_page_config(page_title="Dashboard | Agri-AI EWS", page_icon="🌾", layou
 
 # --- Theme ---
 from theme import (inject_theme_css, render_theme_toggle, render_sidebar_brand, render_footer,
-                   apply_theme_to_plotly, status_chip, ews_card, CHART)
+                   apply_theme_to_plotly, status_chip, ews_card, CHART, PLOTLY_STRETCH)
 inject_theme_css()
 
 # --- Initialize Session State if not present ---
@@ -73,10 +74,20 @@ st.sidebar.divider()
 selected_province = st.sidebar.selectbox("Provinsi", sorted(df['province'].unique()), index=min(10, len(df['province'].unique())-1))
 selected_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].unique()), index=0)
 
-# Horizon dibatasi 30 hari dari data terakhir, sesuai horizon yang divalidasi
-# protokol evaluasi. Prakiraan rekursif BiLSTM melenceng jauh di luar horizon ini.
+current_data = df[(df['province'] == selected_province) & (df['commodity'] == selected_commodity)].sort_values('date')
+if current_data.empty:
+    st.title("Dashboard")
+    st.info(f"Data harga {selected_commodity} di {selected_province} belum tersedia. "
+            "Pilih provinsi atau komoditas lain di sidebar.")
+    st.stop()
+
+# Horizon dibatasi 30 hari dari data terakhir seri terpilih (bukan data terbaru seluruh provinsi),
+# sesuai horizon yang divalidasi protokol evaluasi. Prakiraan rekursif BiLSTM melenceng jauh di luar horizon ini.
 MAX_HORIZON_DAYS = 30
-last_data_date = df['date'].max().date()
+last_data_date = current_data['date'].max().date()
+overall_last_date = df['date'].max().date()
+# Kunci cache: berubah setiap kali data tersinkron, agar prakiraan tidak basi
+data_version = f"{last_data_date:%Y-%m-%d}|{overall_last_date:%Y-%m-%d}|{len(df)}"
 today = datetime.date.today()
 min_date = last_data_date + datetime.timedelta(days=1)
 max_date_val = last_data_date + datetime.timedelta(days=MAX_HORIZON_DAYS)
@@ -87,7 +98,11 @@ forecast_date = st.sidebar.date_input(
     max_value=max_date_val,
     help=f"Maksimal {MAX_HORIZON_DAYS} hari setelah data terakhir ({last_data_date:%d %b %Y})."
 )
-if (today - last_data_date).days > 7:
+if (overall_last_date - last_data_date).days > STALE_TOLERANCE_DAYS:
+    st.sidebar.warning(f"Data {selected_commodity} di {selected_province} berhenti di {last_data_date:%d %b %Y}, "
+                       f"sedangkan provinsi lain sudah sampai {overall_last_date:%d %b %Y}. "
+                       "Prakiraan dihitung dari tanggal tersebut.")
+elif (today - last_data_date).days > 7:
     st.sidebar.warning(f"Data terakhir {last_data_date:%d %b %Y}, tertinggal {(today - last_data_date).days} hari. "
                        "Sinkronkan data agar prakiraan mencakup tanggal sekarang.")
 
@@ -148,8 +163,8 @@ def _protocol_config(params):
     }
 
 
-@st.cache_resource(show_spinner=False)
-def get_model_evaluation(_df, province, commodity, model_type, params):
+@st.cache_resource(show_spinner=False, ttl=6 * 3600)
+def get_model_evaluation(_df, province, commodity, model_type, params, data_version):
     """Metrik dan bobot ensemble dari protokol evaluasi yang sama dengan Model Laboratory/skrip tesis."""
     # Pakai hasil skrip evaluasi (thesis_outputs/) bila kombinasi dan parameter sama dengan bawaan,
     # agar halaman tidak menjalankan ulang seluruh protokol evaluasi (bisa 10+ menit di CPU).
@@ -163,80 +178,87 @@ def get_model_evaluation(_df, province, commodity, model_type, params):
                            models=MODELS_FOR[model_type])
 
 
-@st.cache_resource(show_spinner=False)
-def get_ai_forecast(_df, province, commodity, target_date, model_type, params):
-    try:
-        from models.ensemble import SmartEnsemble
-        from models.lstm_forecast import LSTMForecaster
+@st.cache_resource(show_spinner=False, ttl=6 * 3600)
+def _compute_ai_forecast(_df, province, commodity, target_date, model_type, params, data_version):
+    # Error dibiarkan naik: cache_resource tidak menyimpan hasil yang gagal
+    from models.ensemble import SmartEnsemble
+    from models.lstm_forecast import LSTMForecaster
 
-        series = _df[(_df['province'] == province) & (_df['commodity'] == commodity)].sort_values('date')
-        target_dt = pd.to_datetime(target_date)
-        last_date = pd.to_datetime(series['date'].max())
-        days_ahead = max(1, (target_dt.normalize() - last_date.normalize()).days)
-        notes = []
+    series = _df[(_df['province'] == province) & (_df['commodity'] == commodity)].sort_values('date')
+    target_dt = pd.to_datetime(target_date)
+    last_date = pd.to_datetime(series['date'].max())
+    days_ahead = max(1, (target_dt.normalize() - last_date.normalize()).days)
+    if days_ahead > MAX_HORIZON_DAYS:
+        raise ValueError(f"Tanggal target {days_ahead} hari setelah data terakhir; "
+                         f"maksimal {MAX_HORIZON_DAYS} hari.")
+    notes = []
 
-        # 1. Prophet (selalu, untuk grafik tren jangka panjang)
-        p_forecaster = FoodPriceProphet(_df)
-        p_forecast = p_forecaster.train_and_forecast(province, commodity, periods=max(120, days_ahead))
-        p_row = p_forecast[p_forecast['ds'].dt.date == target_dt.date()]
-        p_row = p_row if not p_row.empty else p_forecast.tail(1)
-        future_preds = {}
-        if 'prophet' in MODELS_FOR[model_type]:
-            future_preds['prophet'] = {'mean': float(p_row['yhat'].iloc[0]),
-                                       'lower': float(p_row['yhat_lower'].iloc[0]),
-                                       'upper': float(p_row['yhat_upper'].iloc[0])}
+    # 1. Prophet (selalu, untuk grafik tren jangka panjang)
+    p_forecaster = FoodPriceProphet(_df)
+    p_forecast = p_forecaster.train_and_forecast(province, commodity, periods=max(120, days_ahead))
+    p_row = p_forecast[p_forecast['ds'].dt.date == target_dt.date()]
+    p_row = p_row if not p_row.empty else p_forecast.tail(1)
+    future_preds = {}
+    if 'prophet' in MODELS_FOR[model_type]:
+        future_preds['prophet'] = {'mean': float(p_row['yhat'].iloc[0]),
+                                   'lower': float(p_row['yhat_lower'].iloc[0]),
+                                   'upper': float(p_row['yhat_upper'].iloc[0])}
 
-        # 2. BiLSTM: prakiraan rekursif sampai tanggal target + interval MC Dropout
-        if 'bilstm' in MODELS_FOR[model_type]:
-            lf = LSTMForecaster(seq_length=params['seq_length'], hidden_size=params['hidden_size'])
-            X_all, y_all = lf.prepare_data(_df, province, commodity)
-            lf.train_single_series(X_all, y_all, epochs=params['epochs'])
-            last_seq = series['price'].values[-params['seq_length']:]
-            point = lf.predict_multi_step(last_seq, steps=days_ahead)
-            mc = lf.predict_with_uncertainty(last_seq, steps=days_ahead, n_samples=50)
-            future_preds['lstm'] = {'mean': float(point[-1]), 'lower': float(mc['lower'][-1]),
-                                    'upper': float(mc['upper'][-1])}
+    # 2. BiLSTM: prakiraan rekursif sampai tanggal target + interval MC Dropout
+    if 'bilstm' in MODELS_FOR[model_type]:
+        lf = LSTMForecaster(seq_length=params['seq_length'], hidden_size=params['hidden_size'])
+        X_all, y_all = lf.prepare_data(_df, province, commodity)
+        lf.train_single_series(X_all, y_all, epochs=params['epochs'])
+        last_seq = series['price'].values[-params['seq_length']:]
+        point = lf.predict_multi_step(last_seq, steps=days_ahead)
+        mc = lf.predict_with_uncertainty(last_seq, steps=days_ahead, n_samples=50)
+        future_preds['lstm'] = {'mean': float(point[-1]), 'lower': float(mc['lower'][-1]),
+                                'upper': float(mc['upper'][-1])}
 
-        # 3. TFT: prakiraan ke DEPAN (bukan 30 hari terakhir data)
-        if 'tft' in MODELS_FOR[model_type]:
-            tft_model = get_tft_forecaster()
-            if tft_model.is_available:
-                dataset, data = tft_model.prepare_dataset(_df, province, commodity, use_all_data=True)
-                if dataset is not None:
-                    tft_model.train(dataset, max_epochs=params['tft_max_epochs'],
-                                    batch_size=params['tft_batch_size'], quiet=True)
-                    fut = tft_model.forecast_future(data, dataset)
-                    idx = min(days_ahead, len(fut['mean'])) - 1
-                    if days_ahead > len(fut['mean']):
-                        notes.append(f"TFT hanya memprakirakan {len(fut['mean'])} hari; dipakai nilai hari terakhirnya.")
-                    future_preds['tft'] = {'mean': float(fut['mean'][idx]), 'lower': float(fut['lower'][idx]),
-                                           'upper': float(fut['upper'][idx])}
-            else:
-                notes.append("TFT tidak tersedia (pytorch-forecasting belum terpasang).")
-
-        # 4. Metrik dan bobot dari protokol evaluasi (di-cache per kombinasi)
-        evaluation = get_model_evaluation(_df, province, commodity, model_type, params)
-        mrow = evaluation['metrics'][evaluation['metrics']['Model'] == EVAL_NAME[model_type]]
-        metrics = mrow.iloc[0].to_dict() if len(mrow) else None
-
-        ensemble_info = None
-        if model_type in ("Smart Ensemble", "Hybrid") and evaluation.get('ensemble'):
-            weights = {WEIGHT_KEY[k]: v for k, v in evaluation['ensemble']['weights'].items()}
-            ens = SmartEnsemble(default_weights=weights)
-            res = ens.combine_forecasts({k: v for k, v in future_preds.items() if k in weights})
-            predicted_price = float(np.atleast_1d(res['mean'])[0])
-            pred_lower = float(np.atleast_1d(res['lower'])[0])
-            pred_upper = float(np.atleast_1d(res['upper'])[0])
-            ensemble_info = {'weights': res['model_weights'], 'models_used': res['models_used'], 'notes': notes}
+    # 3. TFT: prakiraan ke DEPAN (bukan 30 hari terakhir data)
+    if 'tft' in MODELS_FOR[model_type]:
+        tft_model = get_tft_forecaster()
+        if tft_model.is_available:
+            dataset, data = tft_model.prepare_dataset(_df, province, commodity, use_all_data=True)
+            if dataset is not None:
+                tft_model.train(dataset, max_epochs=params['tft_max_epochs'],
+                                batch_size=params['tft_batch_size'], quiet=True)
+                fut = tft_model.forecast_future(data, dataset)
+                idx = min(days_ahead, len(fut['mean'])) - 1
+                if days_ahead > len(fut['mean']):
+                    notes.append(f"TFT hanya memprakirakan {len(fut['mean'])} hari; dipakai nilai hari terakhirnya.")
+                future_preds['tft'] = {'mean': float(fut['mean'][idx]), 'lower': float(fut['lower'][idx]),
+                                       'upper': float(fut['upper'][idx])}
         else:
-            key = {'Prophet Only': 'prophet', 'BiLSTM Only': 'lstm', 'TFT': 'tft'}.get(model_type)
-            if key not in future_preds:
-                return None, None, None, p_forecast, metrics, None
-            single = future_preds[key]
-            predicted_price, pred_lower, pred_upper = single['mean'], single['lower'], single['upper']
+            notes.append("TFT tidak tersedia (pytorch-forecasting belum terpasang).")
 
-        return float(predicted_price), float(pred_lower), float(pred_upper), p_forecast, metrics, ensemble_info
+    # 4. Metrik dan bobot dari protokol evaluasi (di-cache per kombinasi)
+    evaluation = get_model_evaluation(_df, province, commodity, model_type, params, data_version)
+    mrow = evaluation['metrics'][evaluation['metrics']['Model'] == EVAL_NAME[model_type]]
+    metrics = mrow.iloc[0].to_dict() if len(mrow) else None
 
+    ensemble_info = None
+    if model_type in ("Smart Ensemble", "Hybrid") and evaluation.get('ensemble'):
+        weights = {WEIGHT_KEY[k]: v for k, v in evaluation['ensemble']['weights'].items()}
+        ens = SmartEnsemble(default_weights=weights)
+        res = ens.combine_forecasts({k: v for k, v in future_preds.items() if k in weights})
+        predicted_price = float(np.atleast_1d(res['mean'])[0])
+        pred_lower = float(np.atleast_1d(res['lower'])[0])
+        pred_upper = float(np.atleast_1d(res['upper'])[0])
+        ensemble_info = {'weights': res['model_weights'], 'models_used': res['models_used'], 'notes': notes}
+    else:
+        key = {'Prophet Only': 'prophet', 'BiLSTM Only': 'lstm', 'TFT': 'tft'}.get(model_type)
+        if key not in future_preds:
+            return None, None, None, p_forecast, metrics, None
+        single = future_preds[key]
+        predicted_price, pred_lower, pred_upper = single['mean'], single['lower'], single['upper']
+
+    return float(predicted_price), float(pred_lower), float(pred_upper), p_forecast, metrics, ensemble_info
+
+
+def get_ai_forecast(_df, province, commodity, target_date, model_type, params, data_version):
+    try:
+        return _compute_ai_forecast(_df, province, commodity, target_date, model_type, params, data_version)
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -257,7 +279,7 @@ with st.spinner(f"Menghitung prakiraan {selected_commodity} di {selected_provinc
                 "Pelatihan model bisa memakan beberapa menit."):
     predicted_price, pred_lower, pred_upper, p_forecast, metrics, ensemble_info = get_ai_forecast(
         df, selected_province, selected_commodity, forecast_date,
-        model_type_map[model_choice], st.session_state.model_params
+        model_type_map[model_choice], st.session_state.model_params, data_version
     )
 
 # --- Header ---
@@ -275,7 +297,6 @@ with col1:
 
 
 # --- EWS v2 ---
-current_data = df[(df['province'] == selected_province) & (df['commodity'] == selected_commodity)].sort_values('date')
 current_price = current_data['price'].iloc[-1]
 
 # Risiko pasokan dihitung dari data historis, tidak bergantung pada prakiraan
@@ -301,13 +322,10 @@ with col2:
 # --- Dynamic Metrics ---
 m1, m2, m3, m4 = st.columns(4)
 
-# Price change (7 days)
-if len(current_data) >= 7:
-    price_7d = current_data['price'].iloc[-7]
-    pct_7d = (current_price - price_7d) / price_7d * 100
-else:
-    pct_7d = 0
-m1.metric("Harga pasar terakhir", f"IDR {current_price:,.0f}/kg", f"{pct_7d:+.1f}% dalam 7 hari", delta_color="inverse")
+# Perubahan 7 hari kalender (PIHPS tidak terbit di akhir pekan, jadi bukan 7 baris)
+pct_7d = pct_change_days(current_data, 7) or 0
+m1.metric(f"Harga pasar terakhir ({last_data_date:%d %b %Y})", f"IDR {current_price:,.0f}/kg",
+          f"{pct_7d:+.1f}% dalam 7 hari", delta_color="inverse")
 
 if predicted_price is not None:
     price_diff = (predicted_price - current_price) / current_price * 100
@@ -316,7 +334,8 @@ else:
     m2.metric(f"Prediksi ({forecast_date.strftime('%d %b')})", "Belum tersedia")
 
 volatility = current_data['price'].pct_change().std() * 100
-vol_7d_ago = current_data['price'].iloc[:-7].pct_change().std() * 100 if len(current_data) > 14 else volatility
+week_ago = current_data[current_data['date'] <= current_data['date'].max() - pd.Timedelta(days=7)]
+vol_7d_ago = week_ago['price'].pct_change().std() * 100 if len(week_ago) > 7 else volatility
 vol_change = volatility - vol_7d_ago
 m3.metric("Volatilitas harian", f"{volatility:.2f}%", f"{vol_change:+.2f} poin vs 7 hari lalu", delta_color="inverse")
 
@@ -422,12 +441,14 @@ with tab1:
         )
         fig.update_xaxes(showgrid=False)
         fig.update_yaxes(title='Harga (IDR/kg)')
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, **PLOTLY_STRETCH)
     else:
         st.info("Grafik prakiraan belum tersedia karena perhitungan model gagal. Lihat pesan di bagian atas halaman.")
 
 with tab2:
-    latest_all = df[df['commodity'] == selected_commodity].groupby('province').last().reset_index()
+    latest_all = df[df['commodity'] == selected_commodity].sort_values('date').groupby('province').last().reset_index()
+    # Seri yang sudah lama tidak diperbarui tidak dicampur dengan harga terkini
+    latest_all, stale_all = split_stale(latest_all)
     fig_comp = px.bar(
         latest_all.sort_values('price', ascending=False), x='province', y='price',
         color='price', title=f"Harga {selected_commodity} terakhir per provinsi",
@@ -435,7 +456,8 @@ with tab2:
         labels={'price': 'Harga (IDR/kg)', 'province': ''}
     )
     apply_theme_to_plotly(fig_comp)
-    st.plotly_chart(fig_comp, width="stretch")
+    st.plotly_chart(fig_comp, **PLOTLY_STRETCH)
+    st.caption(f"Data per {latest_all['date'].max():%d %b %Y}. {stale_caption(stale_all)}")
 
 with tab3:
     col_a, col_b = st.columns(2)
@@ -446,7 +468,7 @@ with tab3:
         fig_corr = px.imshow(corr, text_auto=".2f", aspect="auto", color_continuous_scale='RdBu_r',
                              zmin=-1, zmax=1, title=f"Korelasi harga di {selected_province}")
         apply_theme_to_plotly(fig_corr)
-        st.plotly_chart(fig_corr, width="stretch")
+        st.plotly_chart(fig_corr, **PLOTLY_STRETCH)
     with col_b:
         st.markdown("**Skor faktor EWS**")
         factors = ews_result.get('factors', {})
@@ -494,12 +516,12 @@ render_footer("Model: Prophet, BiLSTM, TFT", "Data: PIHPS Bank Indonesia", "© 2
 
 
 # --- Prakiraan periodik: beberapa hari ke depan dari data terakhir ---
-@st.cache_resource(show_spinner=False)
-def get_forecast_path(_df, province, commodity, params, last_date_key):
+@st.cache_resource(show_spinner=False, ttl=6 * 3600)
+def get_forecast_path(_df, province, commodity, params, data_version):
     """Prakiraan 30 hari ke depan; bobot Smart Ensemble dari protokol evaluasi (di-cache)."""
     from models.forecast_ahead import forecast_path
     ens_key = next(k for k, v in MODELS_FOR.items() if 'tft' in v and 'ensemble' in v)
-    evaluation = get_model_evaluation(_df, province, commodity, ens_key, params)
+    evaluation = get_model_evaluation(_df, province, commodity, ens_key, params, data_version)
     ens = evaluation.get('ensemble') or {}
     cov_raw = None
     try:  # kovariat iklim nyata (dibaca dari cache data/cache bila sudah diunduh skrip)
@@ -522,12 +544,16 @@ with tab5:
     horizon_sel = pc1.selectbox("Rentang prakiraan", [7, 14, 30], index=0,
                                 format_func=lambda d: f"{d} hari ke depan", key="path_horizon")
     agg_sel = pc2.radio("Ringkasan", ["Harian", "Mingguan", "Bulanan"], horizontal=True, key="path_agg")
+    # Hasil lama hanya dipakai bila seri, parameter, dan versi data masih sama
+    path_key = (selected_province, selected_commodity, repr(sorted(st.session_state.model_params.items())),
+                data_version)
     if st.button("Hitung prakiraan periodik", key="run_path"):
         with st.spinner("Melatih model pada seluruh data dan menghitung prakiraan..."):
             st.session_state['path_result'] = get_forecast_path(df, selected_province, selected_commodity,
-                                                                st.session_state.model_params, str(last_data_date))
+                                                                st.session_state.model_params, data_version)
+            st.session_state['path_result_key'] = path_key
     path_res = st.session_state.get('path_result')
-    if path_res is not None and (path_res['province'], path_res['commodity']) == (selected_province, selected_commodity):
+    if path_res is not None and st.session_state.get('path_result_key') == path_key:
         path = path_res['path'].iloc[:horizon_sel]
         show_cols = [c for c in ['Smart Ensemble', 'Batas bawah', 'Batas atas', 'BiLSTM', 'Prophet', 'TFT',
                                  'ARIMA(5,1,0)'] if c in path.columns]
@@ -547,7 +573,7 @@ with tab5:
         apply_theme_to_plotly(figp, height=420, margin=dict(l=0, r=0, t=40, b=0),
                               legend=dict(orientation="h", yanchor="bottom", y=1.02))
         figp.update_yaxes(title='Harga (IDR/kg)')
-        st.plotly_chart(figp, width="stretch")
+        st.plotly_chart(figp, **PLOTLY_STRETCH)
         num_cols = [c for c in table.columns if c not in ('Periode', 'Jumlah hari')]
         st.dataframe(table.style.format({c: '{:,.0f}' for c in num_cols}), width="stretch", hide_index=True)
         st.caption(f"Kovariat iklim: {'ya' if path_res.get('covariates_used') else 'tidak'} · Bobot ensemble: "

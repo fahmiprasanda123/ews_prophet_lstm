@@ -166,7 +166,8 @@ class EWSEngineV2:
         nat_avg = national_latest.mean()
         nat_std = national_latest.std()
 
-        if nat_std <= 0:
+        # std NaN bila hanya satu provinsi melapor di tanggal terakhir
+        if pd.isna(nat_std) or nat_std <= 0:
             nat_std = nat_avg * 0.1
 
         # How far is predicted from national average?
@@ -180,6 +181,7 @@ class EWSEngineV2:
 
     def _score_velocity(self, series, predicted_price, windows=[7, 14, 30]):
         """Score based on the acceleration of price changes."""
+        # Jendela dihitung per baris data (sama dengan Tabel 4.4 naskah).
         if len(series) < max(windows):
             return 30
 

@@ -13,11 +13,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.database import get_store
+from engine.time_windows import last_n_days, split_stale, stale_caption
 
 st.set_page_config(page_title="Analisis Regional | Agri-AI EWS", page_icon="🌾", layout="wide")
 
 # --- Theme ---
-from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, apply_theme_to_plotly, CHART, STATUS
+from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, apply_theme_to_plotly, CHART, STATUS, PLOTLY_STRETCH
 inject_theme_css()
 
 # Province name mapping: our data names → GeoJSON names
@@ -44,7 +45,7 @@ PROVINCE_TO_GEOJSON = {
 
 GEOJSON_TO_PROVINCE = {v: k for k, v in PROVINCE_TO_GEOJSON.items()}
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_data():
     store = get_store()
     df = store.load_all()
@@ -79,17 +80,24 @@ selected_commodity = st.sidebar.selectbox("Komoditas", sorted(df['commodity'].un
 
 # --- Main Content ---
 st.title("Analisis Regional")
-st.markdown(f"Harga **{selected_commodity}** terakhir di seluruh provinsi")
+# Harga terakhir per provinsi; seri yang sudah lama tidak diperbarui dikeluarkan
+latest_all = df[df['commodity'] == selected_commodity].sort_values('date').groupby('province').last().reset_index()
+latest_all, stale_all = split_stale(latest_all)
+st.markdown(f"Harga **{selected_commodity}** terakhir di seluruh provinsi, data per "
+            f"**{latest_all['date'].max():%d %b %Y}**")
+if not stale_all.empty:
+    st.caption(stale_caption(stale_all))
 
 # --- Choropleth Map ---
 if geojson is not None:
-    latest_prices = df[df['commodity'] == selected_commodity].groupby('province').last().reset_index()
+    latest_prices = latest_all.copy()
     latest_prices['geojson_name'] = latest_prices['province'].map(PROVINCE_TO_GEOJSON)
     latest_prices = latest_prices.dropna(subset=['geojson_name'])
 
-    # Aggregate duplicates (provinces that map to same geojson region)
+    # Peta lama menggabungkan beberapa provinsi dalam satu bentuk: harga dirata-rata,
+    # dan semua nama provinsinya ditampilkan (mis. "Kepulauan Riau + Riau")
     latest_prices = latest_prices.groupby('geojson_name').agg({
-        'province': 'first', 'price': 'mean', 'date': 'first'
+        'province': lambda p: " + ".join(sorted(p)), 'price': 'mean', 'date': 'max'
     }).reset_index()
 
     fig_map = go.Figure(go.Choropleth(
@@ -116,7 +124,7 @@ if geojson is not None:
         margin=dict(l=0, r=0, t=30, b=0),
         title=f"Peta harga {selected_commodity} di Indonesia",
     )
-    st.plotly_chart(fig_map, width="stretch")
+    st.plotly_chart(fig_map, **PLOTLY_STRETCH)
 else:
     st.warning("Peta tidak bisa ditampilkan karena file batas provinsi belum ada. "
                "Letakkan file GeoJSON di `assets/indonesia.geojson`, lalu muat ulang halaman.")
@@ -124,7 +132,6 @@ else:
 # --- Price Disparity Analysis ---
 st.subheader("Disparitas harga antarprovinsi")
 
-latest_all = df[df['commodity'] == selected_commodity].groupby('province').last().reset_index()
 latest_all = latest_all.sort_values('price', ascending=False)
 
 col1, col2, col3 = st.columns(3)
@@ -159,7 +166,7 @@ with col_a:
     )
     fig_bar.update_xaxes(showgrid=False, tickangle=45)
     fig_bar.update_yaxes(title='Harga (IDR/kg)')
-    st.plotly_chart(fig_bar, width="stretch")
+    st.plotly_chart(fig_bar, **PLOTLY_STRETCH)
 
 with col_b:
     st.markdown("**5 provinsi termahal**")
@@ -180,20 +187,23 @@ drill_province = st.selectbox("Provinsi", sorted(df['province'].unique()))
 
 prov_series = df[(df['province'] == drill_province) & (df['commodity'] == selected_commodity)].sort_values('date')
 
-if not prov_series.empty:
+if prov_series.empty:
+    st.info(f"Data harga {selected_commodity} di {drill_province} belum tersedia. Pilih provinsi lain.")
+else:
     c1, c2 = st.columns(2)
-    
+
     with c1:
+        # Jendela dan rata-rata bergerak berbasis tanggal kalender (PIHPS libur akhir pekan)
+        recent = last_n_days(prov_series, 180)
+        ma30 = prov_series.set_index('date')['price'].rolling('30D').mean().loc[recent['date']]
         fig_trend = go.Figure()
         fig_trend.add_trace(go.Scatter(
-            x=prov_series['date'].tail(180), y=prov_series['price'].tail(180),
+            x=recent['date'], y=recent['price'],
             mode='lines', name='Harga',
             line=dict(color=CHART['actual'], width=2),
         ))
-        # Moving average
-        ma30 = prov_series['price'].tail(180).rolling(30).mean()
         fig_trend.add_trace(go.Scatter(
-            x=prov_series['date'].tail(180), y=ma30,
+            x=recent['date'], y=ma30.values,
             mode='lines', name='Rata-rata bergerak 30 hari',
             line=dict(color=CHART['forecast'], width=2, dash='dash'),
         ))
@@ -202,11 +212,12 @@ if not prov_series.empty:
             title=f"Harga 180 hari terakhir di {drill_province}",
             legend=dict(orientation="h", yanchor="bottom", y=1.02),
         )
-        st.plotly_chart(fig_trend, width="stretch")
+        st.plotly_chart(fig_trend, **PLOTLY_STRETCH)
 
     with c2:
         # All commodities in this province
-        prov_all = df[df['province'] == drill_province].groupby('commodity').last().reset_index()
+        prov_all = df[df['province'] == drill_province].sort_values('date').groupby('commodity').last().reset_index()
+        prov_all, prov_stale = split_stale(prov_all)
         fig_comm = px.bar(
             prov_all.sort_values('price', ascending=True), x='price', y='commodity',
             orientation='h', color='price', color_continuous_scale='Viridis',
@@ -216,4 +227,6 @@ if not prov_series.empty:
         apply_theme_to_plotly(
             fig_comm, height=350, showlegend=False,
         )
-        st.plotly_chart(fig_comm, width="stretch")
+        st.plotly_chart(fig_comm, **PLOTLY_STRETCH)
+        if not prov_stale.empty:
+            st.caption(stale_caption(prov_stale, ('commodity',)))

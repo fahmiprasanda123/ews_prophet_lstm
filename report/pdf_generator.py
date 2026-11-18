@@ -181,11 +181,13 @@ class EWSReportGenerator:
             pdf.cell(60, 8, "Interpretasi", 1, 1, "C", True)
 
             pdf.set_font("Helvetica", "", 10)
+            # Kunci disimpan di variabel: escape di dalam ekspresi f-string error di Python < 3.12
+            r2_key = "R\u00b2"
             metric_rows = [
                 ("RMSE", f"{metrics.get('RMSE', 0):,.2f}", "Deviasi rata-rata (IDR)"),
                 ("MAE", f"{metrics.get('MAE', 0):,.2f}", "Error absolut rata-rata"),
                 ("MAPE", f"{metrics.get('MAPE (%)', 0):.2f}%", _mape_category(metrics.get('MAPE (%)', 100))),
-                ("R\u00b2", f"{metrics.get('R\u00b2', 0):.4f}", "Proporsi varians dijelaskan"),
+                (r2_key, f"{metrics.get(r2_key, 0):.4f}", "Proporsi varians dijelaskan"),
             ]
             for label, value, interp in metric_rows:
                 pdf.cell(60, 7, f"  {label}", 1, 0, "L")

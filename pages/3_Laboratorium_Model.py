@@ -16,7 +16,7 @@ from data.database import get_store
 st.set_page_config(page_title="Laboratorium Model | Agri-AI EWS", page_icon="🌾", layout="wide")
 
 # --- Theme ---
-from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, apply_theme_to_plotly, CHART, STATUS
+from theme import inject_theme_css, render_theme_toggle, render_sidebar_brand, apply_theme_to_plotly, CHART, STATUS, PLOTLY_STRETCH
 inject_theme_css()
 
 # --- Initialize Session State if not present ---
@@ -32,7 +32,7 @@ if 'model_params' not in st.session_state:
         'tft_batch_size': 64
     }
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def load_data():
     store = get_store()
     df = store.load_all()
@@ -93,6 +93,12 @@ BEST_CELL = f"background-color: {STATUS['normal']['bg']}; color: {STATUS['normal
 st.title("Laboratorium Model")
 st.markdown("Bandingkan akurasi model pada data uji dan jalankan backtesting walk-forward.")
 
+lab_series = df[(df['province'] == lab_province) & (df['commodity'] == lab_commodity)]
+if lab_series.empty:
+    st.info(f"Data harga {lab_commodity} di {lab_province} belum tersedia. "
+            "Pilih provinsi atau komoditas lain di sidebar.")
+    st.stop()
+
 tab1, tab2, tab3 = st.tabs(["Perbandingan model", "Backtesting", "Variabel berpengaruh"])
 
 # --- Tab 1: Model Comparison ---
@@ -104,6 +110,9 @@ with tab1:
         "dengan grid search pada periode validasi (20% terakhir data latih)."
     )
     use_cov = st.checkbox("Gunakan kovariat iklim nyata (Open-Meteo & NOAA)", value=True, key="lab_cov")
+    # Hasil lama hanya dipakai bila seri, parameter, kovariat, dan versi data masih sama
+    lab_key = (lab_province, lab_commodity, repr(sorted(model_params.items())), use_cov,
+               f"{lab_series['date'].max():%Y-%m-%d}|{len(df)}")
 
     if st.button("Jalankan perbandingan model", key="run_compare"):
         from models.evaluation_protocol import evaluate_series, load_climate_covariates, prepare_series
@@ -131,9 +140,10 @@ with tab1:
             df, lab_province, lab_commodity, config=lab_config, covariates_raw=cov_raw,
             progress=lambda msg, frac: bar.progress(min(max(float(frac), 0.0), 1.0), text=msg),
         )
+        st.session_state['lab_result_key'] = lab_key
 
     result = st.session_state.get('lab_result')
-    if result is not None and (result['province'], result['commodity']) == (lab_province, lab_commodity):
+    if result is not None and st.session_state.get('lab_result_key') == lab_key:
         from models.evaluation_protocol import predictions_frame
 
         sp = result['split']
@@ -191,7 +201,7 @@ with tab1:
             fig.add_vline(x=origin, line_width=0.5, line_color='rgba(128,128,128,0.35)')
         apply_theme_to_plotly(fig, height=450, legend=dict(orientation="h", yanchor="bottom", y=1.02))
         fig.update_yaxes(title='Harga (IDR/kg)')
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig, **PLOTLY_STRETCH)
 
         st.subheader("MAPE menurut horizon prediksi")
         st.dataframe(result['horizon_mape'].style.format(precision=2), width="stretch")
@@ -255,7 +265,7 @@ with tab2:
                 title="MAPE per fold: hijau < 10%, oranye 10-20%, merah > 20%",
             )
             fig_bt.update_yaxes(title='MAPE (%)')
-            st.plotly_chart(fig_bt, width="stretch")
+            st.plotly_chart(fig_bt, **PLOTLY_STRETCH)
 
             # Actual vs Predicted overlay for best fold
             best = results[summary['best_fold']]
@@ -266,7 +276,7 @@ with tab2:
                 fig_best, height=350,
                 title=f"Fold terbaik ({best['test_start']} s.d. {best['test_end']}), MAPE {best['metrics']['MAPE (%)']:.2f}%",
             )
-            st.plotly_chart(fig_best, width="stretch")
+            st.plotly_chart(fig_best, **PLOTLY_STRETCH)
 
             # EWS accuracy test
             st.subheader("Akurasi deteksi EWS")
@@ -300,10 +310,11 @@ with tab3:
         # Create lag features and compute correlation
         price = series['price'].values
         features = {
-            'Lag 1d': np.corrcoef(price[1:], price[:-1])[0, 1],
-            'Lag 7d': np.corrcoef(price[7:], price[:-7])[0, 1] if len(price) > 7 else 0,
-            'Lag 14d': np.corrcoef(price[14:], price[:-14])[0, 1] if len(price) > 14 else 0,
-            'Lag 30d': np.corrcoef(price[30:], price[:-30])[0, 1] if len(price) > 30 else 0,
+            # Lag dihitung per baris data (hari terbit PIHPS), bukan hari kalender
+            'Lag 1 data': np.corrcoef(price[1:], price[:-1])[0, 1],
+            'Lag 7 data': np.corrcoef(price[7:], price[:-7])[0, 1] if len(price) > 7 else 0,
+            'Lag 14 data': np.corrcoef(price[14:], price[:-14])[0, 1] if len(price) > 14 else 0,
+            'Lag 30 data': np.corrcoef(price[30:], price[:-30])[0, 1] if len(price) > 30 else 0,
             'Month': abs(series['date'].dt.month.corr(series['price'])),
             'Day of Week': abs(series['date'].dt.dayofweek.corr(series['price'])),
         }
@@ -338,11 +349,11 @@ with tab3:
         )
         fig_imp.update_xaxes(title='|Correlation|')
         fig_imp.update_yaxes(autorange='reversed')
-        st.plotly_chart(fig_imp, width="stretch")
+        st.plotly_chart(fig_imp, **PLOTLY_STRETCH)
 
         st.markdown("""
         > **Interpretasi**
-        > - **Lag (biru)**: autokorelasi harga, yaitu seberapa besar harga hari ini bergantung pada harga sebelumnya.
+        > - **Lag (biru)**: autokorelasi harga, yaitu seberapa besar harga hari ini bergantung pada harga sebelumnya. "Lag 7 data" berarti 7 data PIHPS sebelumnya (akhir pekan dan hari libur tidak dihitung).
         > - **Komoditas lain (oranye)**: korelasi dengan komoditas lain, petunjuk adanya hubungan rantai pasok.
         > - **Waktu (hijau)**: pengaruh bulan dan hari, petunjuk pola musiman.
         """)

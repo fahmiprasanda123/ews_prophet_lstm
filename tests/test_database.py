@@ -143,3 +143,91 @@ class TestDataStore:
         assert len(series) == 2
         assert series['price'].iloc[0] == 10100
 
+
+    def test_concurrent_read_write_threads(self):
+        """Satu DataStore dipakai thread scheduler (tulis) dan thread sesi (baca) bersamaan."""
+        import threading
+
+        errors = []
+
+        def writer(offset):
+            try:
+                for i in range(200):
+                    day = (offset * 1000 + i) % 28 + 1
+                    self.store.insert_prices([{
+                        'date': f'2025-{offset + 1:02d}-{day:02d}',
+                        'province': f'Prov{i}', 'commodity': 'Beras', 'price': 10000 + i,
+                    }])
+            except Exception as e:
+                errors.append(e)
+
+        def reader():
+            try:
+                for _ in range(200):
+                    self.store.get_stats()
+                    self.store.load_all()
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=writer, args=(k,)) for k in range(3)]
+        threads += [threading.Thread(target=reader) for _ in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert errors == []
+        assert self.store.get_stats()['total_records'] > 0
+
+    def test_insert_returns_real_count_and_skips_invalid(self):
+        import numpy as np
+        rec = {'date': '2025-01-01', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': 10000}
+        assert self.store.insert_prices([rec]) == 1
+        assert self.store.insert_prices([rec]) == 0  # duplikat
+        bad = [
+            {'date': '2025-01-02', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': None},
+            {'date': '2025-01-03', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': float('nan')},
+            {'date': '2025-01-04', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': 0},
+            {'date': '2025-01-05', 'province': 'DKI Jakarta', 'commodity': 'Beras', 'price': -5},
+        ]
+        assert self.store.insert_prices(bad) == 0
+        assert self.store.get_stats()['total_records'] == 1
+
+    def test_numpy_price_stored_as_real(self):
+        import numpy as np
+        import sqlite3
+        n = self.store.insert_prices([
+            {'date': pd.Timestamp('2025-01-01'), 'province': np.str_('Aceh'),
+             'commodity': 'Beras', 'price': np.int64(12000)},
+        ])
+        assert n == 1
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute("SELECT date, typeof(price), price FROM prices").fetchone()
+        assert row == ('2025-01-01', 'real', 12000.0)
+
+    def test_update_existing_replaces_changed_price_only(self):
+        rec = {'date': '2025-01-01', 'province': 'Aceh', 'commodity': 'Beras', 'price': 12000}
+        self.store.insert_prices([rec])
+        # Tanpa update_existing, harga lama dipertahankan (startup CSV tetap idempoten)
+        assert self.store.insert_prices([dict(rec, price=12500)]) == 0
+        assert self.store.insert_prices([dict(rec, price=12500)], update_existing=True) == 1
+        assert self.store.insert_prices([dict(rec, price=12500)], update_existing=True) == 0
+        assert self.store.get_series('Aceh', 'Beras')['price'].iloc[0] == 12500
+
+    def test_sync_log_message(self):
+        self.store.log_sync(0, "error", "Semua provinsi gagal")
+        hist = self.store.get_sync_history()
+        assert hist[0]['status'] == 'error'
+        assert hist[0]['message'] == 'Semua provinsi gagal'
+
+    def test_sync_log_migrates_old_schema(self):
+        import sqlite3
+        from data.database import DataStore
+        self.store.close()
+        os.remove(self.db_path)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("CREATE TABLE sync_log (id INTEGER PRIMARY KEY AUTOINCREMENT, sync_time TEXT NOT NULL, "
+                         "records_added INTEGER DEFAULT 0, status TEXT DEFAULT 'ok')")
+        self.store = DataStore(db_path=self.db_path, csv_path="nonexistent.csv")
+        self.store.log_sync(1, "ok", "x")
+        assert self.store.get_sync_history()[0]['message'] == 'x'

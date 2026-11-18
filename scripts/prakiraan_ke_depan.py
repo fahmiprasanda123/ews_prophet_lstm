@@ -50,6 +50,35 @@ def load_data(source, csv_path):
     return load_frozen_data(csv_path), os.path.basename(csv_path)
 
 
+def load_weights(path):
+    """Bobot Smart Ensemble dari JSON evaluasi; (None, None) bila tidak ada/kosong (mis. berisi null)."""
+    if not os.path.exists(path):
+        print('PERINGATAN: berkas bobot tidak ditemukan; Smart Ensemble tidak dihitung.')
+        return None, None
+    with open(path) as f:
+        w = json.load(f)
+    if not isinstance(w, dict) or not w.get('weights'):
+        print(f'PERINGATAN: {os.path.basename(path)} tidak berisi bobot (evaluasi tanpa Smart Ensemble?); '
+              'Smart Ensemble tidak dihitung.')
+        return None, None
+    return w['weights'], w.get('best_single')
+
+
+def cek_jeda_enso(konfigurasi_path):
+    """Peringatkan bila bobot berasal dari evaluasi dengan jeda ENSO yang berbeda."""
+    from models.evaluation_protocol import DEFAULT_CONFIG
+    if not os.path.exists(konfigurasi_path):
+        return
+    try:
+        with open(konfigurasi_path) as f:
+            lag = (json.load(f).get('konfigurasi') or {}).get('enso_lag_days')
+    except (ValueError, AttributeError):
+        return
+    if lag != DEFAULT_CONFIG['enso_lag_days']:
+        print(f'PERINGATAN: bobot ensemble dihitung dengan enso_lag_days={lag}, prakiraan memakai '
+              f'{DEFAULT_CONFIG["enso_lag_days"]}; jalankan ulang scripts/thesis_outputs.py.')
+
+
 def md_table(df):
     cols = list(df.columns)
     lines = ['| ' + ' | '.join(cols) + ' |', '|' + '---|' * len(cols)]
@@ -86,12 +115,8 @@ def main():
             print(f'GAGAL mengambil kovariat iklim nyata: {exc}\nJalankan dengan --tanpa-kovariat hanya untuk uji alur.')
             sys.exit(2)
 
-    weights, best = None, None
-    if os.path.exists(a.bobot):
-        w = json.load(open(a.bobot))
-        weights, best = w['weights'], w.get('best_single')
-    else:
-        print('PERINGATAN: berkas bobot tidak ditemukan; Smart Ensemble tidak dihitung.')
+    weights, best = load_weights(a.bobot)
+    cek_jeda_enso(os.path.join(os.path.dirname(a.bobot), 'konfigurasi.json'))
 
     res = forecast_path(df, a.provinsi, a.komoditas, horizon=a.horizon, config=QUICK if a.cepat else {},
                         covariates_raw=cov, weights=weights, best_single=best,
@@ -135,17 +160,25 @@ def main():
 
     meta = {'dibuat': datetime.now().isoformat(timespec='seconds'), 'sumber_data': sumber,
             'data_terakhir': str(y.index[-1].date()), 'harga_terakhir': res['last_price'],
-            'horizon_hari': a.horizon, 'bobot': weights, 'kovariat_iklim': res['covariates_used'], 'mode_cepat': a.cepat}
+            'horizon_hari': a.horizon, 'bobot': weights, 'model_penyusun_ensemble': res['ensemble_models'],
+            'model_penyusun_interval': res['bound_models'], 'enso_lag_days': res['enso_lag_days'],
+            'catatan': res['notes'], 'kovariat_iklim': res['covariates_used'], 'mode_cepat': a.cepat}
     json.dump(meta, open(os.path.join(a.output, 'konfigurasi_prakiraan.json'), 'w'), indent=2, ensure_ascii=False)
     cols7 = ['Periode'] + [c for c in ['Smart Ensemble', 'Batas bawah', 'Batas atas', 'BiLSTM', 'Prophet', 'TFT', 'ARIMA(5,1,0)']
                            if c in daily.columns]
     md = [f'# Prakiraan ke depan — {a.komoditas}, {a.provinsi}', '',
           f'Dibuat {meta["dibuat"]}; sumber data: {sumber}; data terakhir {_tgl(y.index[-1])} '
-          f'(Rp{angka(res["last_price"])}/kg); kovariat iklim: {"ya" if res["covariates_used"] else "TIDAK"}.', '',
+          f'(Rp{angka(res["last_price"])}/kg); kovariat iklim: {"ya" if res["covariates_used"] else "TIDAK"} '
+          f'(jeda ENSO {res["enso_lag_days"]} hari).', '',
+          'Model penyusun Smart Ensemble: ' + (', '.join(res['ensemble_models']) or '–')
+          + '; batas interval dari: ' + (', '.join(res['bound_models']) or '–') + '.', '',
           '## Tabel 4.9 — prakiraan harian 7 hari pertama (Rp/kg)', md_table(daily[cols7].head(7)), '',
           '## Tabel 4.10 — ringkasan mingguan (rata-rata, Rp/kg)', md_table(weekly[['Periode', 'Jumlah hari'] + cols7[1:]]), '',
           '## Ringkasan bulanan (rata-rata, Rp/kg)', md_table(monthly[['Periode', 'Jumlah hari'] + cols7[1:]]), '',
           'Gambar 4.4: gambar_prakiraan_ke_depan.png']
+    if res['notes']:
+        md.insert(-1, '**Catatan:** ' + '; '.join(res['notes']))
+        md.insert(-1, '')
     if a.cepat or a.tanpa_kovariat:
         md.insert(2, '> PERINGATAN: mode uji alur (--cepat/--tanpa-kovariat); jangan dipakai di naskah.')
     open(os.path.join(a.output, 'ringkasan_prakiraan.md'), 'w').write('\n'.join(md) + '\n')

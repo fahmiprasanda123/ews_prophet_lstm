@@ -3,6 +3,7 @@ Forecast API router for Agri-AI EWS.
 """
 from fastapi import APIRouter, HTTPException, Query
 from datetime import datetime, timedelta
+import logging
 import pandas as pd
 
 from api.schemas import (
@@ -12,6 +13,7 @@ from api.schemas import (
 from data.database import get_store
 
 router = APIRouter(prefix="/api", tags=["Forecast"])
+logger = logging.getLogger(__name__)
 
 
 @router.get("/forecast", response_model=ForecastResponse)
@@ -19,7 +21,7 @@ def get_forecast(
     province: str = Query(..., description="Province name"),
     commodity: str = Query(..., description="Commodity name"),
     days: int = Query(30, ge=1, le=120, description="Forecast days"),
-    model: str = Query("prophet", description="Model: prophet, lstm, hybrid"),
+    model: str = Query("prophet", description="Model: prophet, lstm"),
 ):
     """Generate price forecast for a specific province and commodity."""
     store = get_store()
@@ -35,8 +37,12 @@ def get_forecast(
     current_price = series['price'].iloc[-1]
     last_date = series['date'].max()
 
+    # "hybrid" dulu diterima tetapi yang berjalan hanya Prophet; tolak agar tidak menyesatkan.
+    if model not in ("prophet", "lstm"):
+        raise HTTPException(status_code=400, detail=f"Unknown model: {model}. Use 'prophet' or 'lstm'.")
+
     try:
-        if model in ("prophet", "hybrid"):
+        if model == "prophet":
             from models.prophet_forecast import FoodPriceProphet
             p = FoodPriceProphet(df)
             forecast = p.train_and_forecast(province, commodity, periods=days)
@@ -67,7 +73,7 @@ def get_forecast(
 
             return ForecastResponse(
                 province=province, commodity=commodity,
-                model_used=model, current_price=float(current_price),
+                model_used="prophet", current_price=float(current_price),
                 forecast=points[:days],
                 narrative=narrative,
             )
@@ -109,9 +115,8 @@ def get_forecast(
                 forecast=points,
                 narrative=narrative,
             )
-        else:
-            raise HTTPException(status_code=400, detail=f"Unknown model: {model}")
-
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Forecast error: {str(e)}")
 
@@ -140,10 +145,11 @@ def get_ews_status(
             if series.empty:
                 continue
             current = series['price'].iloc[-1]
-            # Simple prediction: use 7-day trend projection
-            if len(series) >= 7:
-                trend = (series['price'].iloc[-1] - series['price'].iloc[-7]) / series['price'].iloc[-7]
-                predicted = current * (1 + trend)
+            # Proyeksi tren 7 hari kalender (data tidak selalu harian, mis. akhir pekan kosong)
+            past = series[series['date'] <= series['date'].iloc[-1] - pd.Timedelta(days=7)]
+            if not past.empty and past['price'].iloc[-1] > 0:
+                ref = past['price'].iloc[-1]
+                predicted = current * (1 + (current - ref) / ref)
             else:
                 predicted = current
 
@@ -176,9 +182,13 @@ def compare_models(
     if df.empty:
         raise HTTPException(status_code=404, detail="No data available")
 
+    if df[(df['province'] == province) & (df['commodity'] == commodity)].empty:
+        raise HTTPException(status_code=404, detail=f"No data for {commodity} in {province}")
+
     from models.evaluation import calculate_metrics
 
     results = []
+    errors = {}
 
     # Prophet evaluation
     try:
@@ -198,7 +208,8 @@ def compare_models(
             directional_accuracy=metrics.get('Directional Accuracy (%)'),
         ))
     except Exception as e:
-        pass
+        logger.exception("Prophet evaluation failed")
+        errors["Prophet"] = f"{type(e).__name__}: {e}"
 
     # LSTM evaluation
     try:
@@ -220,12 +231,16 @@ def compare_models(
                 smape=metrics.get('SMAPE (%)'),
                 directional_accuracy=metrics.get('Directional Accuracy (%)'),
             ))
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("LSTM evaluation failed")
+        errors["LSTM"] = f"{type(e).__name__}: {e}"
 
-    best = min(results, key=lambda x: x.mape).model_name if results else "None"
+    if not results:
+        raise HTTPException(status_code=500, detail={"message": "All model evaluations failed", "errors": errors})
+
+    best = min(results, key=lambda x: x.mape).model_name
 
     return ModelComparisonResponse(
         province=province, commodity=commodity,
-        models=results, best_model=best,
+        models=results, best_model=best, errors=errors,
     )

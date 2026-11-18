@@ -61,27 +61,63 @@ class PihpsScraper:
                 # Iterate over keys that look like dates (dd/mm/yyyy)
                 for key, val in item.items():
                     if '/' in key and len(key) == 10:
-                        try:
-                            # Clean price (PIHPS uses '12.000' or '12,000' depending on locale, but usually dot for thousands)
-                            # Actually from test_data.json it's "15,900" (comma as thousands)
-                            price_str = val.replace(',', '').replace('.', '')
-                            if price_str.isdigit():
-                                price = float(price_str)
-                                # PIHPS dates are dd/mm/yyyy
-                                dt = datetime.strptime(key, '%d/%m/%Y').strftime('%Y-%m-%d')
-                                tidy_data.append({
-                                    'date': dt,
-                                    'province': province_name,
-                                    'commodity': std_commodity,
-                                    'price': price
-                                })
-                        except:
+                        price = parse_price(val)
+                        if price is None:
                             continue
+                        try:
+                            dt = datetime.strptime(key, '%d/%m/%Y').strftime('%Y-%m-%d')
+                        except ValueError:
+                            continue
+                        tidy_data.append({
+                            'date': dt,
+                            'province': province_name,
+                            'commodity': std_commodity,
+                            'price': price
+                        })
         return tidy_data
+
+
+def parse_price(val):
+    """Ubah nilai harga PIHPS menjadi float; None bila kosong, tidak valid, atau <= 0.
+
+    Format Indonesia: '.' pemisah ribuan, ',' desimal ("12.500,50" = 12500.5).
+    PIHPS kadang juga mengirim "15,900" (koma sebagai ribuan). Bila hanya satu jenis
+    pemisah muncul sekali dan diikuti tepat 3 digit, pemisah itu dianggap ribuan.
+    """
+    if isinstance(val, bool) or val is None:
+        return None
+    if isinstance(val, (int, float)):
+        price = float(val)
+    else:
+        s = str(val).strip().replace(' ', '')
+        if not s or not any(ch.isdigit() for ch in s):
+            return None
+        if '.' in s and ',' in s:
+            dec = '.' if s.rfind('.') > s.rfind(',') else ','
+            thou = ',' if dec == '.' else '.'
+            s = s.replace(thou, '').replace(dec, '.')
+        elif '.' in s or ',' in s:
+            sep = '.' if '.' in s else ','
+            parts = s.split(sep)
+            if len(parts) > 2 or len(parts[-1]) == 3:
+                s = s.replace(sep, '')
+            else:
+                s = s.replace(sep, '.')
+        try:
+            price = float(s)
+        except ValueError:
+            return None
+    if price != price or price <= 0 or price == float('inf'):
+        return None
+    return price
+
+
+PROVINCE_REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'province_ref.json')
+
 
 def get_province_list():
     """Load province list from generated reference."""
-    with open('province_ref.json', 'r') as f:
+    with open(PROVINCE_REF, 'r') as f:
         return json.load(f)['data']
 
 if __name__ == "__main__":

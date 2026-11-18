@@ -10,6 +10,9 @@ import numpy as np
 from datetime import datetime, timedelta
 from typing import Optional, List
 from data.database import get_store
+from engine.time_windows import (
+    balanced_national_series, last_n_days, price_days_ago, split_stale, stale_caption,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -205,6 +208,10 @@ class ChatbotEngine:
         commodity = self._extract_commodity(msg)
         provinces = self._extract_provinces(msg)
 
+        # "halo, harga beras di Jakarta" -> jawab pertanyaannya, bukan sapaan
+        if intent == "salam" and (commodity or provinces):
+            intent = "unknown"
+
         # Route to handler
         handlers = {
             "salam": self._handle_salam,
@@ -226,46 +233,51 @@ class ChatbotEngine:
     # ------------------------------------------------------------------ #
     def _detect_intent(self, msg: str) -> str:
         """Detect the user's intent from their message."""
+        # Sapaan hanya dipakai bila tidak ada maksud lain dalam pesan
+        greeted = False
         for intent_name, pattern in self.INTENT_PATTERNS:
             if pattern.search(msg):
+                if intent_name == "salam":
+                    greeted = True
+                    continue
                 return intent_name
-        return "unknown"
+        return "salam" if greeted else "unknown"
 
     # ------------------------------------------------------------------ #
     # Entity extraction
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _match_aliases(msg_lower: str, aliases: dict) -> List[str]:
+        """Cocokkan alias per kata utuh, terpanjang dulu, urut posisi di teks.
+
+        Alias yang berada di dalam rentang alias lebih panjang diabaikan
+        (mis. "riau" di dalam "kepulauan riau", "papua" di "papua barat").
+        """
+        spans = []
+        for alias in sorted(aliases, key=len, reverse=True):
+            for m in re.finditer(r"\b" + re.escape(alias) + r"\b", msg_lower):
+                start, end = m.span()
+                if any(start < e and s < end for s, e, _ in spans):
+                    continue
+                spans.append((start, end, aliases[alias]))
+        found = []
+        for _, _, name in sorted(spans):
+            if name not in found:
+                found.append(name)
+        return found
+
     def _extract_commodity(self, msg: str) -> Optional[str]:
         """Try to find a commodity name in the message."""
-        msg_lower = msg.lower()
-        # Try longest alias first to avoid partial matches
-        for alias in sorted(self.COMMODITY_ALIASES.keys(), key=len, reverse=True):
-            if alias in msg_lower:
-                return self.COMMODITY_ALIASES[alias]
-
-        # Fuzzy fallback: check against actual DB commodity names
-        for comm in self._get_commodities():
-            if comm.lower() in msg_lower:
-                return comm
-        return None
+        aliases = {c.lower(): c for c in self._get_commodities()}
+        aliases.update(self.COMMODITY_ALIASES)
+        found = self._match_aliases(msg.lower(), aliases)
+        return found[0] if found else None
 
     def _extract_provinces(self, msg: str) -> List[str]:
         """Try to find province names in the message. May return multiple."""
-        msg_lower = msg.lower()
-        found = []
-        seen = set()
-        for alias in sorted(self.PROVINCE_ALIASES.keys(), key=len, reverse=True):
-            if alias in msg_lower:
-                prov = self.PROVINCE_ALIASES[alias]
-                if prov not in seen:
-                    found.append(prov)
-                    seen.add(prov)
-
-        # Also check actual DB province names
-        for prov in self._get_provinces():
-            if prov.lower() in msg_lower and prov not in seen:
-                found.append(prov)
-                seen.add(prov)
-        return found
+        aliases = {p.lower(): p for p in self._get_provinces()}
+        aliases.update(self.PROVINCE_ALIASES)
+        return self._match_aliases(msg.lower(), aliases)
 
     # ------------------------------------------------------------------ #
     # Cached data helpers
@@ -382,6 +394,8 @@ class ChatbotEngine:
             latest = self.store.get_latest_prices()
             if latest.empty:
                 return self._response("Belum ada data harga di database.")
+            latest, stale = split_stale(latest)
+            as_of = latest["date"].max().strftime("%d %B %Y")
 
             # Show summary per commodity (national average)
             summary = latest.groupby("commodity")["price"].agg(["mean", "min", "max"]).reset_index()
@@ -400,8 +414,9 @@ class ChatbotEngine:
                 + "\n".join(rows)
             )
 
+            stale_text = f"\n\n_{stale_caption(stale, ('province', 'commodity'))}_" if not stale.empty else ""
             return self._response(
-                f"## Ringkasan Harga Terbaru (Nasional)\n\n{table}\n\n"
+                f"## Ringkasan Harga Terbaru (Nasional)\n\nData per {as_of}\n\n{table}{stale_text}\n\n"
                 f"Untuk detail spesifik, coba: *\"Harga beras di Jakarta\"*"
             )
 
@@ -434,7 +449,7 @@ class ChatbotEngine:
                 f"**{self._fmt_price(latest_price)}** per kg\n\n"
                 f"Data terakhir: {latest_date}\n\n"
                 f"{change_text}",
-                chart_data=series.tail(30),
+                chart_data=last_n_days(series, 30),
                 chart_type="line",
                 chart_title=f"Harga {commodity} di {province} (30 hari terakhir)",
             )
@@ -443,6 +458,9 @@ class ChatbotEngine:
             latest = self.store.get_latest_prices(commodity)
             if latest.empty:
                 return self._response(f"Tidak ditemukan data harga **{commodity}**.")
+            latest, stale = split_stale(latest)
+            as_of = latest["date"].max().strftime("%d %B %Y")
+            stale_text = f"_{stale_caption(stale)}_\n\n" if not stale.empty else ""
 
             avg_price = latest["price"].mean()
             min_row = latest.loc[latest["price"].idxmin()]
@@ -450,9 +468,11 @@ class ChatbotEngine:
 
             return self._response(
                 f"## Harga {commodity} (Nasional)\n\n"
+                f"Data per {as_of}\n\n"
                 f"- Rata-rata nasional: **{self._fmt_price(avg_price)}**\n"
                 f"- Terendah: **{self._fmt_price(min_row['price'])}** ({min_row['province']})\n"
                 f"- Tertinggi: **{self._fmt_price(max_row['price'])}** ({max_row['province']})\n\n"
+                f"{stale_text}"
                 f"Untuk melihat di provinsi tertentu, coba: *\"Harga {commodity.lower()} di Jakarta\"*"
             )
 
@@ -467,9 +487,9 @@ class ChatbotEngine:
 
             rows = []
             for _, r in prov_data.iterrows():
-                rows.append(f"| {r['commodity']} | {self._fmt_price(r['price'])} |")
+                rows.append(f"| {r['commodity']} | {self._fmt_price(r['price'])} | {r['date'].strftime('%d %b %Y')} |")
 
-            table = "| Komoditas | Harga |\n|-----------|-------|\n" + "\n".join(rows)
+            table = "| Komoditas | Harga | Data per |\n|-----------|-------|----------|\n" + "\n".join(rows)
 
             return self._response(
                 f"## Harga Komoditas di {province}\n\n{table}"
@@ -489,33 +509,27 @@ class ChatbotEngine:
         if province:
             series = self.store.get_series(province, commodity)
         else:
-            # National average
+            # Rata-rata nasional dengan himpunan provinsi tetap (lihat balanced_national_series)
             all_data = self.store.load_all()
-            if commodity:
-                all_data = all_data[all_data["commodity"] == commodity]
-            series = all_data.groupby("date")["price"].mean().reset_index()
+            series = balanced_national_series(all_data[all_data["commodity"] == commodity])
 
         if series.empty:
             loc_text = f" di {province}" if province else " (nasional)"
             return self._response(f"Tidak ditemukan data tren **{commodity}**{loc_text}.")
 
-        # Analyze last 30 and 90 days
-        recent_30 = series.tail(30)
-        recent_90 = series.tail(90)
+        # Jendela 30/90 hari kalender (PIHPS tidak terbit di akhir pekan)
+        recent_30 = last_n_days(series, 30)
+        recent_90 = last_n_days(series, 90)
+        end_price = series["price"].iloc[-1]
 
-        if len(recent_30) >= 2:
-            start_price = recent_30["price"].iloc[0]
-            end_price = recent_30["price"].iloc[-1]
-            change_30 = ((end_price - start_price) / start_price) * 100
-        else:
-            change_30 = 0
+        def _change(days):
+            past = price_days_ago(series, days)
+            if past is None:
+                past = series["price"].iloc[0]
+            return ((end_price - past) / past) * 100 if past else 0
 
-        if len(recent_90) >= 2:
-            start_price_90 = recent_90["price"].iloc[0]
-            end_price_90 = recent_90["price"].iloc[-1]
-            change_90 = ((end_price_90 - start_price_90) / start_price_90) * 100
-        else:
-            change_90 = 0
+        change_30 = _change(30)
+        change_90 = _change(90)
 
         # Trend description
         if change_30 > 5:
@@ -527,7 +541,7 @@ class ChatbotEngine:
         else:
             trend_desc = "**turun signifikan**"
 
-        volatility = recent_30["price"].std() / recent_30["price"].mean() * 100
+        volatility = recent_30["price"].std() / recent_30["price"].mean() * 100 if len(recent_30) >= 2 else 0.0
         vol_desc = "tinggi" if volatility > 10 else "sedang" if volatility > 5 else "rendah"
 
         loc_text = f" di {province}" if province else " (Nasional)"
@@ -560,9 +574,7 @@ class ChatbotEngine:
             series = self.store.get_series(province, commodity)
         else:
             all_data = self.store.load_all()
-            if commodity:
-                all_data = all_data[all_data["commodity"] == commodity]
-            series = all_data.groupby("date")["price"].mean().reset_index()
+            series = balanced_national_series(all_data[all_data["commodity"] == commodity])
 
         if series.empty:
             loc_text = f" di {province}" if province else ""
@@ -597,7 +609,7 @@ class ChatbotEngine:
             f"| Maximum | {self._fmt_price(prices.max())} |\n"
             f"| Std. Deviasi | {self._fmt_price(prices.std())} |\n"
             f"{monthly_text}",
-            chart_data=series.tail(90),
+            chart_data=last_n_days(series, 90),
             chart_type="line",
             chart_title=f"Harga {commodity}{loc_text} (90 hari terakhir)",
         )
@@ -632,7 +644,7 @@ class ChatbotEngine:
                 return ["N/A"] * 4
             p = s["price"]
             return [
-                self._fmt_price(p.iloc[-1]),
+                f"{self._fmt_price(p.iloc[-1])} ({s['date'].iloc[-1].strftime('%d %b %Y')})",
                 self._fmt_price(p.mean()),
                 self._fmt_price(p.min()),
                 self._fmt_price(p.max()),
@@ -667,8 +679,8 @@ class ChatbotEngine:
         # Build combined chart data
         chart_data = None
         if not series1.empty and not series2.empty:
-            s1 = series1.tail(90).copy()
-            s2 = series2.tail(90).copy()
+            s1 = last_n_days(series1, 90).copy()
+            s2 = last_n_days(series2, 90).copy()
             s1["province"] = prov1
             s2["province"] = prov2
             chart_data = pd.concat([s1, s2], ignore_index=True)
@@ -759,23 +771,22 @@ class ChatbotEngine:
                     f"Tidak dapat menghasilkan prediksi untuk **{commodity}**{loc_text}."
                 )
 
-            # Key prediction points
-            pred_7d = future_forecast.iloc[min(6, len(future_forecast) - 1)]
-            pred_14d = future_forecast.iloc[min(13, len(future_forecast) - 1)]
-            pred_30d = future_forecast.iloc[min(29, len(future_forecast) - 1)]
-            pred_last = future_forecast.iloc[-1]
+            # Titik prediksi hanya untuk horizon <= yang diminta (forecast harian, baris ke-h = hari ke-h)
+            horizon = min(periods, len(future_forecast))
+            horizon_rows = [(h, future_forecast.iloc[h - 1]) for h in self._horizon_points(horizon)]
+            pred_last = horizon_rows[-1][1]
 
             # Build response
             change_text = ""
             if last_actual is not None:
-                change_30 = pred_30d["yhat"] - last_actual
-                pct_30 = (change_30 / last_actual) * 100
-                if change_30 > 0:
-                    change_text = f"\nHarga diprediksi **naik {self._fmt_price(abs(change_30))}** (+{pct_30:.1f}%) dalam 30 hari."
-                elif change_30 < 0:
-                    change_text = f"\nHarga diprediksi **turun {self._fmt_price(abs(change_30))}** ({pct_30:.1f}%) dalam 30 hari."
+                change = pred_last["yhat"] - last_actual
+                pct = (change / last_actual) * 100
+                if change > 0:
+                    change_text = f"\nHarga diprediksi **naik {self._fmt_price(abs(change))}** (+{pct:.1f}%) dalam {horizon} hari."
+                elif change < 0:
+                    change_text = f"\nHarga diprediksi **turun {self._fmt_price(abs(change))}** ({pct:.1f}%) dalam {horizon} hari."
                 else:
-                    change_text = "\nHarga diprediksi **stabil** dalam 30 hari."
+                    change_text = f"\nHarga diprediksi **stabil** dalam {horizon} hari."
 
             # Confidence level based on interval width
             avg_range = (future_forecast["yhat_upper"] - future_forecast["yhat_lower"]).mean()
@@ -795,15 +806,11 @@ class ChatbotEngine:
                 f"### Prediksi Harga\n"
                 f"| Periode | Prediksi | Batas Bawah | Batas Atas |\n"
                 f"|---------|----------|-------------|------------|\n"
-                f"| 7 hari | {self._fmt_price(pred_7d['yhat'])} | {self._fmt_price(pred_7d['yhat_lower'])} | {self._fmt_price(pred_7d['yhat_upper'])} |\n"
-                f"| 14 hari | {self._fmt_price(pred_14d['yhat'])} | {self._fmt_price(pred_14d['yhat_lower'])} | {self._fmt_price(pred_14d['yhat_upper'])} |\n"
-                f"| 30 hari | {self._fmt_price(pred_30d['yhat'])} | {self._fmt_price(pred_30d['yhat_lower'])} | {self._fmt_price(pred_30d['yhat_upper'])} |\n"
             )
-
-            if len(future_forecast) > 30:
+            for h, row in horizon_rows:
                 result_text += (
-                    f"| {periods} hari | {self._fmt_price(pred_last['yhat'])} | "
-                    f"{self._fmt_price(pred_last['yhat_lower'])} | {self._fmt_price(pred_last['yhat_upper'])} |\n"
+                    f"| {h} hari | {self._fmt_price(row['yhat'])} | "
+                    f"{self._fmt_price(row['yhat_lower'])} | {self._fmt_price(row['yhat_upper'])} |\n"
                 )
 
             result_text += (
@@ -823,7 +830,7 @@ class ChatbotEngine:
 
             # Prepend last 30 days of actual data
             if not series.empty:
-                hist = series.tail(30).copy()
+                hist = last_n_days(series, 30).copy()
                 hist["lower"] = hist["price"]
                 hist["upper"] = hist["price"]
                 chart_df = pd.concat([hist, chart_df], ignore_index=True)
@@ -841,6 +848,12 @@ class ChatbotEngine:
                 f"Prediksi gagal dihitung (`{e}`).\n\n"
                 f"Pastikan data **{commodity}**{loc_text} tersedia dan cukup."
             )
+
+    @staticmethod
+    def _horizon_points(horizon: int) -> List[int]:
+        """Horizon tabel prediksi: 7/14/30 hari yang <= horizon, ditambah horizon itu sendiri."""
+        points = [h for h in (7, 14, 30) if h < horizon]
+        return points + [max(1, horizon)]
 
     @staticmethod
     def _extract_forecast_days(msg: str) -> int:

@@ -131,3 +131,115 @@ class TestWeatherClient:
         result = client._fetch_open_meteo('Planet Mars', self.dates)
         assert result is None
         mock_get.assert_not_called()
+
+
+def _fake_open_meteo(archive_available=True, null_days=()):
+    """requests.get palsu: mengembalikan data harian sesuai rentang yang diminta."""
+    from data.weather_client import WeatherClient as WC
+    from datetime import datetime, timedelta, timezone
+    today = datetime.now(timezone(timedelta(hours=7))).date()
+    calls = []
+
+    def fake_get(url, params=None, timeout=None):
+        calls.append((url, dict(params)))
+        if url == WC.ARCHIVE_URL:
+            if not archive_available:
+                raise RuntimeError("archive down")
+            days = pd.date_range(params['start_date'], params['end_date'])
+        else:
+            days = pd.date_range(today - timedelta(days=params['past_days']),
+                                 today + timedelta(days=params['forecast_days'] - 1))
+        rain = [None if d.strftime('%Y-%m-%d') in null_days else 5.0 + (d.day % 7) for d in days]
+        resp = MagicMock()
+        resp.json.return_value = {'daily': {
+            'time': [d.strftime('%Y-%m-%d') for d in days],
+            'precipitation_sum': rain,
+            'temperature_2m_mean': [26.0 + (d.day % 5) for d in days],
+        }}
+        return resp
+
+    return fake_get, calls, today
+
+
+class TestOpenMeteoCoverage:
+    """Regresi: rentang panjang yang berakhir dekat hari ini tidak boleh diisi konstanta."""
+
+    def test_long_range_ending_today_uses_archive_and_forecast(self):
+        fake_get, calls, today = _fake_open_meteo()
+        dates = pd.date_range(pd.Timestamp(today) - pd.Timedelta(days=800), pd.Timestamp(today))
+        with patch('data.weather_client.requests.get', side_effect=fake_get):
+            client = WeatherClient(use_live=True, strict=True)
+            rain = client.get_rainfall('Jawa Timur', dates)
+        urls = [c[0] for c in calls]
+        assert WeatherClient.ARCHIVE_URL in urls and WeatherClient.FORECAST_URL in urls
+        forecast_params = [p for u, p in calls if u == WeatherClient.FORECAST_URL][0]
+        assert forecast_params['past_days'] <= 92
+        assert len(rain) == len(dates)
+        assert rain.notna().all()
+        # Tidak ada deretan panjang nilai 0 hasil pengisian
+        assert (rain == 0).sum() == 0
+        assert client.fallback_used == set()
+
+    def test_missing_history_raises_in_strict_mode(self):
+        fake_get, _, today = _fake_open_meteo(archive_available=False)
+        dates = pd.date_range(pd.Timestamp(today) - pd.Timedelta(days=400), pd.Timestamp(today))
+        with patch('data.weather_client.requests.get', side_effect=fake_get):
+            client = WeatherClient(use_live=True, strict=True)
+            with pytest.raises(RuntimeError):
+                client.get_rainfall('Jawa Timur', dates)
+            assert client._fetch_open_meteo('Jawa Timur', dates) is None
+
+    def test_missing_history_uses_flagged_fallback_when_not_strict(self):
+        fake_get, _, today = _fake_open_meteo(archive_available=False)
+        dates = pd.date_range(pd.Timestamp(today) - pd.Timedelta(days=400), pd.Timestamp(today))
+        with patch('data.weather_client.requests.get', side_effect=fake_get):
+            client = WeatherClient(use_live=True, strict=False)
+            client.get_temperature('Jawa Timur', dates)
+        assert 'suhu:Jawa Timur' in client.fallback_used
+
+    def test_short_gap_is_filled_long_gap_rejected(self):
+        dates = pd.date_range('2024-01-01', '2024-01-31')
+        short = {'2024-01-10', '2024-01-11'}
+        fake_get, _, _ = _fake_open_meteo(null_days=short)
+        with patch('data.weather_client.requests.get', side_effect=fake_get):
+            result = WeatherClient(use_live=True)._fetch_open_meteo('Bali', dates)
+        assert result is not None and result.notna().all().all()
+
+        long_gap = {d.strftime('%Y-%m-%d') for d in pd.date_range('2024-01-05', '2024-01-20')}
+        fake_get, _, _ = _fake_open_meteo(null_days=long_gap)
+        with patch('data.weather_client.requests.get', side_effect=fake_get):
+            assert WeatherClient(use_live=True)._fetch_open_meteo('Bali', dates) is None
+
+    def test_dates_with_time_of_day_are_normalized(self):
+        fake_get, _, today = _fake_open_meteo()
+        now = pd.Timestamp.now()
+        dates = pd.date_range(now - pd.Timedelta(days=7), now - pd.Timedelta(days=1))
+        with patch('data.weather_client.requests.get', side_effect=fake_get):
+            client = WeatherClient(use_live=True, strict=True)
+            rain = client.get_rainfall('DKI Jakarta', dates)
+        assert len(rain) == 7
+        assert rain.notna().all()
+        assert (rain.index == rain.index.normalize()).all()
+
+
+class TestEnsoCache:
+    def test_cache_used_when_covering_and_named_enso_index(self):
+        client = WeatherClient(use_live=True)
+        client._enso_cache = pd.Series([0.5, 0.7], index=pd.to_datetime(['2024-01-15', '2024-02-15']), name='oni')
+        dates = pd.date_range('2024-02-01', '2024-02-20')
+        with patch('data.weather_client.requests.get') as mock_get:
+            out = client._fetch_noaa_enso(dates)
+        mock_get.assert_not_called()
+        assert out.name == 'enso_index'
+        assert out.notna().all()
+
+    def test_cache_not_covering_triggers_refetch(self):
+        client = WeatherClient(use_live=True)
+        client._enso_cache = pd.Series([0.5], index=pd.to_datetime(['2024-01-15']), name='oni')
+        dates = pd.date_range('2023-12-01', '2023-12-10')
+        resp = MagicMock()
+        resp.text = "SEAS  YR   TOTAL   ANOM\nNDJ 2023 28.0 1.9\nDJF 2024 27.9 1.8\n"
+        with patch('data.weather_client.requests.get', return_value=resp) as mock_get:
+            out = client._fetch_noaa_enso(dates)
+        mock_get.assert_called_once()
+        assert out.name == 'enso_index'

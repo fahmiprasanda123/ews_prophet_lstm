@@ -10,6 +10,7 @@ Contoh:
 """
 import os
 import sqlite3
+import sys
 
 import pandas as pd
 
@@ -20,10 +21,14 @@ CSV_TERBARU = os.path.join(ROOT, 'data', 'prices_latest.csv')
 
 
 def main():
+    # sqlite3.connect membuat file kosong bila belum ada; cek dulu.
+    if not os.path.exists(DB_FILE):
+        sys.exit(f"{DB_FILE} tidak ditemukan. Jalankan aplikasi/sinkronisasi dulu agar database terbentuk.")
+
     batas = pd.to_datetime(pd.read_csv(CSV_BEKU, usecols=['date'])['date'], format='mixed').max()
     batas = batas.strftime('%Y-%m-%d')
 
-    with sqlite3.connect(DB_FILE) as conn:
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
         df = pd.read_sql(
             "SELECT date, province, commodity, price FROM prices WHERE date > ? ORDER BY date, province, commodity",
             conn, params=[batas])

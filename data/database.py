@@ -3,6 +3,7 @@ SQLite Data Layer for Agri-AI EWS.
 Replaces raw CSV access with structured database operations.
 Falls back to CSV if SQLite is unavailable.
 """
+import math
 import sqlite3
 import pandas as pd
 import os
@@ -20,6 +21,9 @@ class DataStore:
         self.db_path = db_path or DB_FILE
         self.csv_path = csv_path or CSV_FILE
         self._conn = None
+        # Koneksi dipakai bersama thread sesi Streamlit dan thread scheduler;
+        # tanpa kunci, baca-tulis yang bersamaan memicu "database disk image is malformed".
+        self._lock = threading.RLock()
         self._init_db()
 
     # ------------------------------------------------------------------ #
@@ -27,22 +31,24 @@ class DataStore:
     # ------------------------------------------------------------------ #
     @contextmanager
     def _get_conn(self):
-        """Yield a persistent SQLite connection."""
-        if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA synchronous=NORMAL")
-        try:
-            yield self._conn
-        except Exception:
-            self._conn.rollback()
-            raise
+        """Yield the persistent SQLite connection, held exclusively by one thread at a time."""
+        with self._lock:
+            if self._conn is None:
+                self._conn = sqlite3.connect(self.db_path, check_same_thread=False, timeout=30)
+                self._conn.execute("PRAGMA journal_mode=WAL")
+                self._conn.execute("PRAGMA synchronous=NORMAL")
+            try:
+                yield self._conn
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def close(self):
         """Close the database connection."""
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None
 
     def _init_db(self):
         """Create tables and indexes if they don't exist."""
@@ -69,6 +75,10 @@ class DataStore:
                     status TEXT DEFAULT 'ok'
                 )
             """)
+            # Kolom pesan ditambahkan belakangan; DB lama perlu dimigrasi.
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(sync_log)").fetchall()]
+            if 'message' not in cols:
+                conn.execute("ALTER TABLE sync_log ADD COLUMN message TEXT")
             conn.commit()
 
     # ------------------------------------------------------------------ #
@@ -193,34 +203,44 @@ class DataStore:
     # ------------------------------------------------------------------ #
     # Write operations
     # ------------------------------------------------------------------ #
-    def insert_prices(self, records: list) -> int:
-        """Insert new price records. Skips duplicates.
+    def insert_prices(self, records: list, update_existing: bool = False) -> int:
+        """Insert price records and return the number of rows actually inserted/changed.
         records: list of dicts with keys date, province, commodity, price
+
+        Duplicates are ignored, unless update_existing=True: then a different price
+        for an existing (date, province, commodity) replaces the stored one.
+        Records with an empty, NaN, or non-positive price are skipped.
         """
         if not records:
             return 0
 
-        inserted = 0
+        rows = []
+        for rec in records:
+            row = _clean_record(rec)
+            if row is not None:
+                rows.append(row)
+        if not rows:
+            return 0
+
+        if update_existing:
+            sql = ("INSERT INTO prices (date, province, commodity, price) VALUES (?, ?, ?, ?) "
+                   "ON CONFLICT(date, province, commodity) DO UPDATE SET price = excluded.price "
+                   "WHERE prices.price IS NOT excluded.price")
+        else:
+            sql = "INSERT OR IGNORE INTO prices (date, province, commodity, price) VALUES (?, ?, ?, ?)"
+
         with self._get_conn() as conn:
-            for rec in records:
-                try:
-                    conn.execute(
-                        "INSERT OR IGNORE INTO prices (date, province, commodity, price) VALUES (?, ?, ?, ?)",
-                        (rec['date'], rec['province'], rec['commodity'], rec['price'])
-                    )
-                    inserted += 1
-                except sqlite3.IntegrityError:
-                    pass
+            before = conn.total_changes
+            conn.executemany(sql, rows)
             conn.commit()
+            return conn.total_changes - before
 
-        return inserted
-
-    def log_sync(self, records_added: int, status: str = "ok"):
+    def log_sync(self, records_added: int, status: str = "ok", message: str = None):
         """Log a sync event."""
         with self._get_conn() as conn:
             conn.execute(
-                "INSERT INTO sync_log (sync_time, records_added, status) VALUES (?, ?, ?)",
-                (datetime.now().isoformat(), records_added, status)
+                "INSERT INTO sync_log (sync_time, records_added, status, message) VALUES (?, ?, ?, ?)",
+                (datetime.now().isoformat(), int(records_added), status, message)
             )
             conn.commit()
 
@@ -228,10 +248,10 @@ class DataStore:
         """Get recent sync log entries."""
         with self._get_conn() as conn:
             rows = conn.execute(
-                "SELECT sync_time, records_added, status FROM sync_log ORDER BY id DESC LIMIT ?",
+                "SELECT sync_time, records_added, status, message FROM sync_log ORDER BY id DESC LIMIT ?",
                 (limit,)
             ).fetchall()
-        return [{"time": r[0], "records": r[1], "status": r[2]} for r in rows]
+        return [{"time": r[0], "records": r[1], "status": r[2], "message": r[3]} for r in rows]
 
     def get_stats(self) -> dict:
         """Get database statistics."""
@@ -250,12 +270,30 @@ class DataStore:
         }
 
 
+def _clean_record(rec):
+    """Ubah satu record ke tipe bawaan Python; None bila harga tidak valid.
+
+    Tipe numpy (mis. numpy.int64) tersimpan sebagai BLOB oleh sqlite3, jadi dikonversi dulu.
+    """
+    try:
+        price = float(rec['price'])
+        date = pd.Timestamp(rec['date']).strftime('%Y-%m-%d')
+    except (TypeError, ValueError, KeyError):
+        return None
+    if math.isnan(price) or price <= 0:
+        return None
+    return (date, str(rec['province']), str(rec['commodity']), price)
+
+
 # Convenience singleton
 _store = None
+_store_lock = threading.Lock()
 
 def get_store() -> DataStore:
     """Get or create the global DataStore singleton."""
     global _store
     if _store is None:
-        _store = DataStore()
+        with _store_lock:
+            if _store is None:
+                _store = DataStore()
     return _store

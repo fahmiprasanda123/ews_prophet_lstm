@@ -54,6 +54,7 @@ class Backtester:
             test_data = series.iloc[train_end:test_end]
             
             params = model_params or {}
+            self._fold_note = None
 
             try:
                 if model_type == 'prophet':
@@ -88,6 +89,8 @@ class Backtester:
                         'predictions': preds.tolist(),
                         'actuals': actual.tolist(),
                     })
+                    if self._fold_note:
+                        results[-1]['note'] = self._fold_note
             except Exception as e:
                 logger.warning(f"Fold {fold} failed: {e}")
 
@@ -257,6 +260,9 @@ class Backtester:
         epochs = params.get('epochs', 5)
         hidden_size = params.get('hidden_size', 128)
         
+        seed = params.get('seed', 42)
+        from models.evaluation_protocol import set_seed
+        set_seed(seed)  # sebelum konstruksi agar bobot awal ikut deterministik
         forecaster = LSTMForecaster(seq_length=seq_len, hidden_size=hidden_size)
         
         # Fit scaler on training data
@@ -276,7 +282,7 @@ class Backtester:
         X = torch.FloatTensor(np.array(X))
         y = torch.FloatTensor(np.array(y))
 
-        forecaster.train_single_series(X, y, epochs=epochs)
+        forecaster.train_single_series(X, y, epochs=epochs, seed=seed)
 
         # Predict
         last_seq = all_prices[-seq_len:]
@@ -350,23 +356,32 @@ class Backtester:
         return ens_pred
 
     def _run_naive_fold(self, train_data, test_data, params):
-        """Run Naïve Seasonal on a single fold."""
+        """Run Naïve Seasonal on a single fold.
+
+        Bila periode musiman lebih panjang dari jendela latih (mis. 365 vs 180 hari),
+        lag musiman tidak tersedia sehingga dipakai naive nilai terakhir; hal ini
+        dicatat pada kunci 'note' hasil fold.
+        """
         from models.conventional_forecast import ConventionalForecaster
-        conv = ConventionalForecaster(pd.DataFrame())  # dummy, we use direct method
+        conv = ConventionalForecaster(None)
         seasonal_period = params.get('seasonal_period', 365)
+        if seasonal_period > len(train_data):
+            self._fold_note = (f"Periode musiman {seasonal_period} hari > jendela latih {len(train_data)} hari; "
+                               "memakai naive nilai terakhir.")
+            logger.info(self._fold_note)
         return conv.naive_multi_step(train_data['price'].values, len(test_data), seasonal_period)
 
     def _run_sma_fold(self, train_data, test_data, params):
         """Run SMA on a single fold."""
         from models.conventional_forecast import ConventionalForecaster
-        conv = ConventionalForecaster(pd.DataFrame())
+        conv = ConventionalForecaster(None)
         window = params.get('sma_window', 30)
         return conv.sma_multi_step(train_data['price'].values, len(test_data), window)
 
     def _run_arima_fold(self, train_data, test_data, params):
         """Run ARIMA on a single fold."""
         from models.conventional_forecast import ConventionalForecaster
-        conv = ConventionalForecaster(pd.DataFrame())
+        conv = ConventionalForecaster(None)
         order = params.get('arima_order', (5, 1, 0))
         return conv.arima_multi_step(train_data['price'].values, len(test_data), order)
 
